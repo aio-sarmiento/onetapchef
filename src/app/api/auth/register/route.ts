@@ -75,6 +75,7 @@ export async function POST(req: NextRequest) {
     // Roll back the auth user if DB write fails
     await supabase.auth.admin.deleteUser(userId);
     console.error(err);
-    return NextResponse.json({ error: "Database error" }, { status: 500 });
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
