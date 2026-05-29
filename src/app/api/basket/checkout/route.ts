@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
     }>
   >();
 
-  for (const [, agg] of aggregated) {
+  for (const [, agg] of Array.from(aggregated)) {
     const stock = await prisma.vendorStock.findFirst({
       where: {
         ingredientId: agg.ingredientId,
