@@ -110,8 +110,8 @@ export default function RecipeDetailPage() {
       <div className="grid md:grid-cols-2 gap-8 mb-8">
         <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-muted">
           {recipe.imageUrl ? (
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={recipe.imageUrl ?? ""} alt={recipe.title} className="object-cover w-full h-full" />
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={recipe.imageUrl} alt={recipe.title} className="object-cover w-full h-full" />
           ) : (
             <div className="h-full flex items-center justify-center text-muted-foreground">
               <ChefHat className="h-16 w-16" />
