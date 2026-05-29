@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     email,
     password,
     user_metadata: { role, displayName },
-    email_confirm: false,
+    email_confirm: true,
   });
 
   if (authError || !authData.user) {
@@ -69,12 +69,6 @@ export async function POST(req: NextRequest) {
       // Pre-create an empty basket for the student
       await prisma.basket.create({ data: { studentId: userId } });
     }
-
-    // Send confirmation email via Supabase
-    await supabase.auth.admin.generateLink({
-      type: "signup",
-      email,
-    });
 
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (err) {

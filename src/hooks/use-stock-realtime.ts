@@ -26,7 +26,7 @@ export function useStockRealtime(recipeId: string, ingredientIds: string[]) {
           event: "*",
           schema: "public",
           table: "vendor_stock",
-          filter: `ingredient_id=in.(${ingredientIds.join(",")})`,
+          filter: `ingredient_id=in.(${ingredientKey})`,
         },
         () => {
           // Invalidate this recipe so ingredient availability re-fetches
@@ -40,6 +40,7 @@ export function useStockRealtime(recipeId: string, ingredientIds: string[]) {
     return () => {
       supabase.removeChannel(channel);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recipeId, ingredientKey, qc]);
 }
 
