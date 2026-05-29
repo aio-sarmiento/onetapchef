@@ -1,0 +1,239 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  student
+  vendor
+  admin
+}
+
+enum StockStatus {
+  available
+  low
+  sold_out
+  expired
+}
+
+enum OrderStatus {
+  pending
+  confirmed
+  ready
+  completed
+  cancelled
+}
+
+model User {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  role           Role
+  displayName    String   @map("display_name")
+  avatarUrl      String?  @map("avatar_url")
+  isVerified     Boolean  @default(false) @map("is_verified")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  studentProfile StudentProfile?
+  vendorProfile  VendorProfile?
+  recipes        Recipe[]
+  baskets        Basket[]
+  ordersAsStudent Order[]  @relation("StudentOrders")
+  comments       Comment[]
+
+  @@map("users")
+}
+
+model StudentProfile {
+  id                      String   @id @default(uuid())
+  userId                  String   @unique @map("user_id")
+  university              String?
+  dietaryTags             String[] @map("dietary_tags")
+  universityEmailVerified Boolean  @default(false) @map("university_email_verified")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("student_profiles")
+}
+
+model VendorProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique @map("user_id")
+  businessName    String   @map("business_name")
+  description     String?
+  address         String
+  city            String
+  latitude        Decimal? @db.Decimal(10, 8)
+  longitude       Decimal? @db.Decimal(11, 8)
+  isAdminVerified Boolean  @default(false) @map("is_admin_verified")
+  contactPhone    String?  @map("contact_phone")
+  avgRating       Decimal? @map("avg_rating") @db.Decimal(3, 2)
+
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stock  VendorStock[]
+  orders Order[]
+
+  @@map("vendor_profiles")
+}
+
+model Ingredient {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  aliases     String[]
+  category    String
+  defaultUnit String   @map("default_unit")
+  imageUrl    String?  @map("image_url")
+
+  stock              VendorStock[]
+  recipeIngredients  RecipeIngredient[]
+  orderItems         OrderItem[]
+
+  @@map("ingredients")
+}
+
+model VendorStock {
+  id                String      @id @default(uuid())
+  vendorId          String      @map("vendor_id")
+  ingredientId      String      @map("ingredient_id")
+  quantityAvailable Decimal     @map("quantity_available") @db.Decimal(10, 3)
+  originalQuantity  Decimal     @map("original_quantity") @db.Decimal(10, 3)
+  unit              String
+  pricePerUnit      Decimal     @map("price_per_unit") @db.Decimal(10, 2)
+  expiryDate        DateTime    @map("expiry_date") @db.Date
+  status            StockStatus @default(available)
+  listedAt          DateTime    @default(now()) @map("listed_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  vendor     VendorProfile @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  ingredient Ingredient    @relation(fields: [ingredientId], references: [id])
+  orderItems OrderItem[]
+
+  @@map("vendor_stock")
+}
+
+model Recipe {
+  id               String   @id @default(uuid())
+  title            String
+  slug             String   @unique
+  description      String
+  authorId         String   @map("author_id")
+  baseServings     Int      @map("base_servings")
+  prepTimeMinutes  Int      @map("prep_time_minutes")
+  cookTimeMinutes  Int      @map("cook_time_minutes")
+  category         String
+  cuisine          String
+  dietaryTags      String[] @map("dietary_tags")
+  imageUrl         String?  @map("image_url")
+  instructions     Json
+  isPublished      Boolean  @default(true) @map("is_published")
+  availabilityScore Decimal @default(0) @map("availability_score") @db.Decimal(4, 3)
+  createdAt        DateTime @default(now()) @map("created_at")
+  viewCount        Int      @default(0) @map("view_count")
+  shareCount       Int      @default(0) @map("share_count")
+
+  author      User               @relation(fields: [authorId], references: [id])
+  ingredients RecipeIngredient[]
+  basketItems BasketItem[]
+  comments    Comment[]
+
+  @@map("recipes")
+}
+
+model RecipeIngredient {
+  id              String  @id @default(uuid())
+  recipeId        String  @map("recipe_id")
+  ingredientId    String  @map("ingredient_id")
+  quantity        Decimal @db.Decimal(10, 3)
+  unit            String
+  isOptional      Boolean @default(false) @map("is_optional")
+  preparationNote String? @map("preparation_note")
+  sortOrder       Int     @default(0) @map("sort_order")
+
+  recipe     Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+
+  @@unique([recipeId, ingredientId])
+  @@map("recipe_ingredients")
+}
+
+model Basket {
+  id        String   @id @default(uuid())
+  studentId String   @unique @map("student_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  student User         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  items   BasketItem[]
+
+  @@map("baskets")
+}
+
+model BasketItem {
+  id       String   @id @default(uuid())
+  basketId String   @map("basket_id")
+  recipeId String   @map("recipe_id")
+  servings Int
+  addedAt  DateTime @default(now()) @map("added_at")
+
+  basket Basket @relation(fields: [basketId], references: [id], onDelete: Cascade)
+  recipe Recipe @relation(fields: [recipeId], references: [id])
+
+  @@unique([basketId, recipeId])
+  @@map("basket_items")
+}
+
+model Order {
+  id             String      @id @default(uuid())
+  studentId      String      @map("student_id")
+  vendorId       String      @map("vendor_id")
+  status         OrderStatus @default(pending)
+  studentNote    String?     @map("student_note")
+  vendorNote     String?     @map("vendor_note")
+  estimatedTotal Decimal     @map("estimated_total") @db.Decimal(10, 2)
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  student User          @relation("StudentOrders", fields: [studentId], references: [id])
+  vendor  VendorProfile @relation(fields: [vendorId], references: [id])
+  items   OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id                String  @id @default(uuid())
+  orderId           String  @map("order_id")
+  ingredientId      String  @map("ingredient_id")
+  stockId           String  @map("stock_id")
+  quantityRequested Decimal @map("quantity_requested") @db.Decimal(10, 3)
+  quantityConfirmed Decimal? @map("quantity_confirmed") @db.Decimal(10, 3)
+  unit              String
+  pricePerUnit      Decimal @map("price_per_unit") @db.Decimal(10, 2)
+
+  order      Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ingredient Ingredient  @relation(fields: [ingredientId], references: [id])
+  stock      VendorStock @relation(fields: [stockId], references: [id])
+
+  @@map("order_items")
+}
+
+model Comment {
+  id              String   @id @default(uuid())
+  recipeId        String   @map("recipe_id")
+  authorId        String   @map("author_id")
+  body            String
+  parentCommentId String?  @map("parent_comment_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  isDeleted       Boolean  @default(false) @map("is_deleted")
+
+  recipe        Recipe    @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  author        User      @relation(fields: [authorId], references: [id])
+  parentComment Comment?  @relation("CommentReplies", fields: [parentCommentId], references: [id])
+  replies       Comment[] @relation("CommentReplies")
+
+  @@map("comments")
+}
