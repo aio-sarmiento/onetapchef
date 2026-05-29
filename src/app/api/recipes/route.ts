@@ -3,6 +3,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/utils";
+
+export const dynamic = "force-dynamic";
 import { recomputeRecipeAvailability } from "@/lib/availability";
 
 export async function GET(req: NextRequest) {
