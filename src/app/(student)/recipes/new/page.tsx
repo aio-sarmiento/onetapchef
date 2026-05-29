@@ -119,7 +119,7 @@ export default function NewRecipePage() {
                 placeholder="A quick weeknight dinner…"
               />
             </div>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-5 gap-3">
               <div className="space-y-2">
                 <Label>Servings</Label>
                 <Input type="number" min="1" value={baseServings} onChange={(e) => setBaseServings(e.target.value)} />
@@ -135,6 +135,10 @@ export default function NewRecipePage() {
               <div className="space-y-2">
                 <Label>Category</Label>
                 <Input value={category} onChange={(e) => setCategory(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Cuisine</Label>
+                <Input value={cuisine} onChange={(e) => setCuisine(e.target.value)} />
               </div>
             </div>
             <div className="space-y-2">

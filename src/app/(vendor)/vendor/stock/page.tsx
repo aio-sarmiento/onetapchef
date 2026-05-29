@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,10 +24,7 @@ type StockItem = {
 type Ingredient = { id: string; name: string; category: string; defaultUnit: string };
 
 async function fetchMyStock(): Promise<{ vendorId: string; stock: StockItem[] }> {
-  const [meRes, vendorRes] = await Promise.all([
-    fetch("/api/auth/me"),
-    fetch("/api/auth/me"),
-  ]);
+  const meRes = await fetch("/api/auth/me");
   const me = await meRes.json();
   const vendorId = me.vendorProfile?.id;
   if (!vendorId) return { vendorId: "", stock: [] };

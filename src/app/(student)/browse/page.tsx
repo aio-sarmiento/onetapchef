@@ -4,8 +4,6 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { RecipeCard } from "@/components/recipe-card";
 import { cn } from "@/lib/utils";
 import { useGlobalStockRealtime } from "@/hooks/use-stock-realtime";

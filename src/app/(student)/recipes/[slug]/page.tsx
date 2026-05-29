@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Clock, Users, Minus, Plus, ShoppingBasket, ChefHat } from "lucide-react";
+import { Clock, Minus, Plus, ShoppingBasket, ChefHat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { IngredientAvailabilityChip } from "@/components/ingredient-availability-chip";
@@ -110,7 +110,8 @@ export default function RecipeDetailPage() {
       <div className="grid md:grid-cols-2 gap-8 mb-8">
         <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-muted">
           {recipe.imageUrl ? (
-            <img src={recipe.imageUrl} alt={recipe.title} className="object-cover w-full h-full" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={recipe.imageUrl ?? ""} alt={recipe.title} className="object-cover w-full h-full" />
           ) : (
             <div className="h-full flex items-center justify-center text-muted-foreground">
               <ChefHat className="h-16 w-16" />

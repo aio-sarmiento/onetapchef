@@ -11,9 +11,10 @@ import { createClient } from "@/lib/supabase/client";
  */
 export function useStockRealtime(recipeId: string, ingredientIds: string[]) {
   const qc = useQueryClient();
+  const ingredientKey = ingredientIds.join(",");
 
   useEffect(() => {
-    if (!ingredientIds.length) return;
+    if (!ingredientKey) return;
 
     const supabase = createClient();
 
@@ -39,7 +40,7 @@ export function useStockRealtime(recipeId: string, ingredientIds: string[]) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [recipeId, ingredientIds.join(","), qc]);
+  }, [recipeId, ingredientKey, qc]);
 }
 
 /**
