@@ -7,6 +7,8 @@ import { recomputeAvailabilityForIngredient } from "@/lib/availability";
 const updateSchema = z.object({
   quantityAvailable: z.number().min(0).optional(),
   pricePerUnit: z.number().min(0).optional(),
+  packageSize: z.number().positive().optional(),
+  isPromoted: z.boolean().optional(),
   expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   status: z.enum(["available", "low", "sold_out"]).optional(),
 });

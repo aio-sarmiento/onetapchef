@@ -23,6 +23,8 @@ const createStockSchema = z.object({
   quantityAvailable: z.number().positive(),
   unit: z.string().min(1),
   pricePerUnit: z.number().min(0),
+  packageSize: z.number().positive().default(100),
+  isPromoted: z.boolean().default(true),
   expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
@@ -49,7 +51,7 @@ export async function POST(
     return NextResponse.json({ error: parse.error.flatten() }, { status: 400 });
   }
 
-  const { ingredientId, quantityAvailable, unit, pricePerUnit, expiryDate } = parse.data;
+  const { ingredientId, quantityAvailable, unit, pricePerUnit, packageSize, isPromoted, expiryDate } = parse.data;
 
   const stock = await prisma.vendorStock.create({
     data: {
@@ -59,6 +61,8 @@ export async function POST(
       originalQuantity: quantityAvailable,
       unit,
       pricePerUnit,
+      packageSize,
+      isPromoted,
       expiryDate: new Date(expiryDate),
       status: "available",
     },

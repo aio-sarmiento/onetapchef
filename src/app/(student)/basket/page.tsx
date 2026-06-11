@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { Minus, Plus, Trash2, ShoppingBasket, ChefHat, ArrowRight, Truck, MapPin, Loader2, X } from "lucide-react";
+import { Minus, Plus, Trash2, ShoppingBasket, ChefHat, ArrowRight, Truck, MapPin, Loader2, X, ChevronDown } from "lucide-react";
 import { useBasketStore } from "@/stores/basket-store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,12 +14,20 @@ import { toast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
+type Alternative = {
+  vendorId: string;
+  vendorName: string;
+  packLabel: string;
+  lineTotal: number;
+};
+
 type LineItem = {
   ingredientId: string;
   ingredientName: string;
   packLabel: string;
   pricePerUnit: number;
   lineTotal: number;
+  alternatives: Alternative[];
 };
 
 type VendorGroup = {
@@ -42,6 +50,7 @@ export default function BasketPage() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
+  const [expandedAlts, setExpandedAlts] = useState<Set<string>>(new Set());
   const router = useRouter();
 
   function toggleExclude(ingredientId: string) {
@@ -52,7 +61,14 @@ export default function BasketPage() {
     });
   }
 
-  // Reload price preview when basket, servings, or exclusions change
+  function toggleAlternatives(ingredientId: string) {
+    setExpandedAlts((prev) => {
+      const next = new Set(prev);
+      if (next.has(ingredientId)) { next.delete(ingredientId); } else { next.add(ingredientId); }
+      return next;
+    });
+  }
+
   useEffect(() => {
     if (items.length === 0) { setPreview(null); return; }
     const controller = new AbortController();
@@ -209,32 +225,56 @@ export default function BasketPage() {
               <div className="space-y-1 pl-3 border-l-2 border-brand-muted">
                 {group.lineItems.map((line) => {
                   const isExcluded = excluded.has(line.ingredientId);
+                  const altsExpanded = expandedAlts.has(line.ingredientId);
+                  const hasAlts = line.alternatives.length > 0;
                   return (
-                    <div
-                      key={line.ingredientId}
-                      className={cn(
-                        "flex items-center gap-2 text-xs transition-opacity",
-                        isExcluded ? "opacity-40 line-through" : "text-muted-foreground"
-                      )}
-                    >
-                      <span className="flex-1">{line.ingredientName}</span>
-                      <span className="text-muted-foreground">{line.packLabel}</span>
-                      <span className={cn("font-medium w-14 text-right", !isExcluded && "text-foreground")}>
-                        {formatCurrency(line.lineTotal)}
-                      </span>
-                      <button
-                        type="button"
-                        title={isExcluded ? "Re-add ingredient" : "Remove ingredient (I already have this)"}
-                        onClick={() => toggleExclude(line.ingredientId)}
+                    <div key={line.ingredientId}>
+                      <div
                         className={cn(
-                          "rounded-full p-0.5 transition-colors shrink-0",
-                          isExcluded
-                            ? "bg-brand/20 text-brand hover:bg-brand/30"
-                            : "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          "flex items-center gap-2 text-xs transition-opacity",
+                          isExcluded ? "opacity-40 line-through" : "text-muted-foreground"
                         )}
                       >
-                        <X className="h-3 w-3" />
-                      </button>
+                        <span className="flex-1">{line.ingredientName}</span>
+                        <span className="text-muted-foreground">{line.packLabel}</span>
+                        <span className={cn("font-medium w-14 text-right", !isExcluded && "text-foreground")}>
+                          {formatCurrency(line.lineTotal)}
+                        </span>
+                        {hasAlts && !isExcluded && (
+                          <button
+                            type="button"
+                            title="Show alternative vendors"
+                            onClick={() => toggleAlternatives(line.ingredientId)}
+                            className="text-muted-foreground hover:text-foreground rounded p-0.5"
+                          >
+                            <ChevronDown className={cn("h-3 w-3 transition-transform", altsExpanded && "rotate-180")} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          title={isExcluded ? "Re-add ingredient" : "Remove (I already have this)"}
+                          onClick={() => toggleExclude(line.ingredientId)}
+                          className={cn(
+                            "rounded-full p-0.5 transition-colors shrink-0",
+                            isExcluded
+                              ? "bg-brand/20 text-brand hover:bg-brand/30"
+                              : "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          )}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                      {altsExpanded && hasAlts && !isExcluded && (
+                        <div className="ml-2 mt-0.5 space-y-0.5 border-l border-dashed border-muted-foreground/30 pl-2">
+                          {line.alternatives.map((alt) => (
+                            <div key={alt.vendorId} className="flex items-center gap-2 text-xs text-muted-foreground/70">
+                              <span className="flex-1 italic">{alt.vendorName}</span>
+                              <span>{alt.packLabel}</span>
+                              <span className="w-14 text-right">{formatCurrency(alt.lineTotal)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

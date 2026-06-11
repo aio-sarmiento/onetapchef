@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, AlertTriangle, Megaphone, MegaphoneOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatDate, daysUntilExpiry, formatCurrency } from "@/lib/utils";
+import { getPackDef } from "@/lib/vendor-units";
 import { toast } from "@/hooks/use-toast";
 
 type StockItem = {
@@ -16,6 +17,8 @@ type StockItem = {
   quantityAvailable: number;
   unit: string;
   pricePerUnit: number;
+  packageSize: number;
+  isPromoted: boolean;
   expiryDate: string;
   status: "available" | "low" | "sold_out" | "expired";
   ingredient: { id: string; name: string; category: string };
@@ -56,6 +59,7 @@ export default function VendorStockPage() {
   const [selectedIngredient, setSelectedIngredient] = useState<Ingredient | null>(null);
   const [quantity, setQuantity] = useState("");
   const [price, setPrice] = useState("");
+  const [packageSize, setPackageSize] = useState("");
   const [expiry, setExpiry] = useState("");
 
   const { data: categories = [] } = useQuery<string[]>({
@@ -71,6 +75,15 @@ export default function VendorStockPage() {
     enabled: showResults,
   });
 
+  // When an ingredient is selected, pre-fill package size from category default
+  function selectIngredient(ing: Ingredient) {
+    setSelectedIngredient(ing);
+    setIngredientSearch(ing.name);
+    setBrowseCategory("");
+    const packDef = getPackDef(ing.category);
+    setPackageSize(String(packDef.size));
+  }
+
   const addMutation = useMutation({
     mutationFn: async () => {
       if (!data?.vendorId || !selectedIngredient) throw new Error("Missing data");
@@ -82,6 +95,8 @@ export default function VendorStockPage() {
           quantityAvailable: parseFloat(quantity),
           unit: selectedIngredient.defaultUnit,
           pricePerUnit: parseFloat(price),
+          packageSize: parseFloat(packageSize) || getPackDef(selectedIngredient.category).size,
+          isPromoted: true,
           expiryDate: expiry,
         }),
       });
@@ -99,6 +114,7 @@ export default function VendorStockPage() {
       setIngredientSearch("");
       setQuantity("");
       setPrice("");
+      setPackageSize("");
       setExpiry("");
     },
     onError: (e) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -115,12 +131,30 @@ export default function VendorStockPage() {
     },
   });
 
+  const promoteMutation = useMutation({
+    mutationFn: async ({ stockId, isPromoted }: { stockId: string; isPromoted: boolean }) => {
+      const res = await fetch(`/api/vendors/${data?.vendorId}/stock/${stockId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isPromoted }),
+      });
+      if (!res.ok) throw new Error("Failed to update");
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["vendor-stock"] }),
+    onError: (e) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   const STATUS_BADGE: Record<string, "available" | "low" | "unavailable" | "expiring"> = {
     available: "available",
     low: "low",
     sold_out: "unavailable",
     expired: "unavailable",
   };
+
+  const packSizeHint = selectedIngredient
+    ? `${getPackDef(selectedIngredient.category).unit} per package`
+    : "g or ml per package";
 
   return (
     <div className="space-y-6">
@@ -150,10 +184,10 @@ export default function VendorStockPage() {
                   setIngredientSearch(e.target.value);
                   setBrowseCategory("");
                   setSelectedIngredient(null);
+                  setPackageSize("");
                 }}
               />
 
-              {/* Category chips */}
               {!selectedIngredient && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {categories.map((cat) => (
@@ -177,7 +211,6 @@ export default function VendorStockPage() {
                 </div>
               )}
 
-              {/* Results list */}
               {showResults && ingredientResults.length > 0 && !selectedIngredient && (
                 <div className="border rounded-md divide-y max-h-52 overflow-y-auto">
                   {ingredientResults.map((ing) => (
@@ -185,11 +218,7 @@ export default function VendorStockPage() {
                       key={ing.id}
                       type="button"
                       className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
-                      onClick={() => {
-                        setSelectedIngredient(ing);
-                        setIngredientSearch(ing.name);
-                        setBrowseCategory("");
-                      }}
+                      onClick={() => selectIngredient(ing)}
                     >
                       <span className="font-medium">{ing.name}</span>
                       <span className="text-muted-foreground ml-2 text-xs">{ing.category}</span>
@@ -206,7 +235,7 @@ export default function VendorStockPage() {
                   <button
                     type="button"
                     className="text-muted-foreground hover:text-foreground underline"
-                    onClick={() => { setSelectedIngredient(null); setIngredientSearch(""); }}
+                    onClick={() => { setSelectedIngredient(null); setIngredientSearch(""); setPackageSize(""); }}
                   >
                     Change
                   </button>
@@ -214,9 +243,9 @@ export default function VendorStockPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Quantity ({selectedIngredient?.defaultUnit ?? "unit"})</Label>
+                <Label>Total quantity ({selectedIngredient?.defaultUnit ?? "unit"})</Label>
                 <Input
                   type="number"
                   min="0.01"
@@ -227,7 +256,18 @@ export default function VendorStockPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Price per unit (€)</Label>
+                <Label>Package size ({packSizeHint})</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="200"
+                  value={packageSize}
+                  onChange={(e) => setPackageSize(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Price per 100g / 100ml (€)</Label>
                 <Input
                   type="number"
                   min="0"
@@ -248,11 +288,17 @@ export default function VendorStockPage() {
               </div>
             </div>
 
+            {price && packageSize && (
+              <p className="text-xs text-muted-foreground">
+                = {formatCurrency((parseFloat(packageSize) / 100) * parseFloat(price))} per package
+              </p>
+            )}
+
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
               <Button
                 variant="brand"
-                disabled={!selectedIngredient || !quantity || !expiry || addMutation.isPending}
+                disabled={!selectedIngredient || !quantity || !expiry || !price || addMutation.isPending}
                 onClick={() => addMutation.mutate()}
               >
                 {addMutation.isPending ? "Adding…" : "Add listing"}
@@ -285,6 +331,11 @@ export default function VendorStockPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium">{item.ingredient.name}</span>
                       <Badge variant={STATUS_BADGE[item.status]}>{item.status.replace("_", " ")}</Badge>
+                      {item.isPromoted ? (
+                        <Badge variant="secondary" className="text-xs">Promoted</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">Hidden</Badge>
+                      )}
                       {days <= 1 && (
                         <Badge variant="expiring" className="flex items-center gap-1">
                           <AlertTriangle className="h-3 w-3" />
@@ -293,19 +344,33 @@ export default function VendorStockPage() {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {Number(item.quantityAvailable)} {item.unit} · {formatCurrency(Number(item.pricePerUnit))}/{item.unit} ·
+                      {Number(item.quantityAvailable)}{item.unit} · {Number(item.packageSize)}{item.unit} packages ·{" "}
+                      {formatCurrency(Number(item.pricePerUnit))}/100{item.unit} ·{" "}
+                      {formatCurrency((Number(item.packageSize) / 100) * Number(item.pricePerUnit))}/pkg ·{" "}
                       Expires {formatDate(item.expiryDate)} ({days}d)
                     </p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteMutation.mutate(item.id)}
-                    disabled={deleteMutation.isPending}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title={item.isPromoted ? "Hide from students" : "Promote to students"}
+                      className={item.isPromoted ? "text-brand hover:text-muted-foreground" : "text-muted-foreground hover:text-brand"}
+                      onClick={() => promoteMutation.mutate({ stockId: item.id, isPromoted: !item.isPromoted })}
+                      disabled={promoteMutation.isPending}
+                    >
+                      {item.isPromoted ? <Megaphone className="h-4 w-4" /> : <MegaphoneOff className="h-4 w-4" />}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => deleteMutation.mutate(item.id)}
+                      disabled={deleteMutation.isPending}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             );

@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { Prisma, StockStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { scaleQuantity } from "@/lib/utils";
-import { roundToPacks } from "@/lib/vendor-units";
+import { roundToPacks, scoreVendorOption } from "@/lib/vendor-units";
+
+const ACTIVE_STATUSES: StockStatus[] = [StockStatus.available, StockStatus.low];
 
 const checkoutSchema = z.object({
   items: z.array(
@@ -32,7 +35,7 @@ export async function POST(req: NextRequest) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Step 1+2: Load all recipe ingredients and compute scaled quantities
+  // Aggregate scaled quantities, skipping non-purchasable and excluded ingredients
   const aggregated = new Map<
     string,
     { ingredientId: string; totalQty: number; unit: string; category: string }
@@ -41,23 +44,23 @@ export async function POST(req: NextRequest) {
   for (const item of items) {
     const recipe = await prisma.recipe.findUnique({
       where: { id: item.recipeId },
-      include: { ingredients: { include: { ingredient: { select: { category: true } } } } },
+      include: {
+        ingredients: {
+          include: { ingredient: { select: { category: true, purchasable: true } } },
+        },
+      },
     });
     if (!recipe) continue;
 
     for (const ri of recipe.ingredients) {
       if (excluded.has(ri.ingredientId)) continue;
-      const scaled = scaleQuantity(
-        Number(ri.quantity),
-        recipe.baseServings,
-        item.servings
-      );
-      const key = ri.ingredientId;
-      const existing = aggregated.get(key);
+      if (!ri.ingredient.purchasable) continue; // skip water, ice, etc.
+      const scaled = scaleQuantity(Number(ri.quantity), recipe.baseServings, item.servings);
+      const existing = aggregated.get(ri.ingredientId);
       if (existing) {
         existing.totalQty += scaled;
       } else {
-        aggregated.set(key, {
+        aggregated.set(ri.ingredientId, {
           ingredientId: ri.ingredientId,
           totalQty: scaled,
           unit: ri.unit,
@@ -67,7 +70,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Step 3: For each ingredient, find the best vendor stock
+  // Group by best vendor using waste+cost scoring
   const vendorGroups = new Map<
     string,
     Array<{
@@ -79,36 +82,47 @@ export async function POST(req: NextRequest) {
     }>
   >();
 
+  const baseStockWhere: Prisma.VendorStockWhereInput = {
+    status: { in: ACTIVE_STATUSES },
+    expiryDate: { gte: today },
+    quantityAvailable: { gt: 0 },
+    vendor: { isAdminVerified: true },
+  };
+
   for (const [, agg] of Array.from(aggregated)) {
-    const stock = await prisma.vendorStock.findFirst({
-      where: {
-        ingredientId: agg.ingredientId,
-        status: { in: ["available", "low"] },
-        expiryDate: { gte: today },
-        quantityAvailable: { gt: 0 },
-        vendor: { isAdminVerified: true },
-      },
+    let candidates = await prisma.vendorStock.findMany({
+      where: { ingredientId: agg.ingredientId, ...baseStockWhere, isPromoted: true },
       orderBy: [{ status: "asc" }, { pricePerUnit: "asc" }],
+      take: 5,
     });
+    if (candidates.length === 0) {
+      candidates = await prisma.vendorStock.findMany({
+        where: { ingredientId: agg.ingredientId, ...baseStockWhere },
+        orderBy: [{ status: "asc" }, { pricePerUnit: "asc" }],
+        take: 5,
+      });
+    }
+    if (candidates.length === 0) continue;
 
-    if (!stock) continue; // ingredient not available — skip
+    const best = candidates
+      .map((s) => ({
+        stock: s,
+        score: scoreVendorOption(agg.totalQty, Number(s.packageSize), Number(s.pricePerUnit)),
+      }))
+      .sort((a, b) => a.score - b.score)[0].stock;
 
-    // Round up to nearest vendor pack
-    const { totalQty: orderedQty } = roundToPacks(agg.totalQty, agg.category);
+    const { totalQty: orderedQty } = roundToPacks(agg.totalQty, agg.category, Number(best.packageSize));
+    const pricePerGram = Number(best.pricePerUnit) / 100;
 
-    // pricePerUnit stored as €/100g — convert to €/g for order line items
-    const pricePerGram = Number(stock.pricePerUnit) / 100;
-
-    const vendorId = stock.vendorId;
-    const group = vendorGroups.get(vendorId) ?? [];
+    const group = vendorGroups.get(best.vendorId) ?? [];
     group.push({
       ingredientId: agg.ingredientId,
-      stockId: stock.id,
+      stockId: best.id,
       quantityRequested: orderedQty,
       unit: agg.unit,
       pricePerUnit: pricePerGram,
     });
-    vendorGroups.set(vendorId, group);
+    vendorGroups.set(best.vendorId, group);
   }
 
   if (vendorGroups.size === 0) {
@@ -118,7 +132,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Step 4: Create one Order per vendor
   const orders = await Promise.all(
     Array.from(vendorGroups.entries()).map(async ([vendorId, lineItems]) => {
       const estimatedTotal = lineItems.reduce(

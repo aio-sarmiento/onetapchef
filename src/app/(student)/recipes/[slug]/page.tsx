@@ -25,6 +25,7 @@ type IngredientAvailability = {
   availability: "available" | "low" | "unavailable";
   bestStock: {
     pricePerUnit: number;
+    packageSize: number;
     quantityAvailable: number;
     vendor: { businessName: string };
   } | null;
@@ -76,12 +77,12 @@ export default function RecipeDetailPage() {
   const currentServings = servings ?? recipe.baseServings;
   const inBasket = hasItem(recipe.id);
 
-  // pricePerUnit is €/100g — round up to vendor packs and divide by 100 to match cart
+  // pricePerUnit is €/100g — use vendor's actual packageSize, round up to packs, divide by 100
   const estimatedCost = recipe.ingredientAvailability
     .filter((i) => i.bestStock && !i.isOptional)
     .reduce((sum, i) => {
       const scaled = scaleQuantity(i.quantity, recipe.baseServings, currentServings);
-      const { totalQty: orderedQty } = roundToPacks(scaled, i.category);
+      const { totalQty: orderedQty } = roundToPacks(scaled, i.category, Number(i.bestStock!.packageSize));
       return sum + (orderedQty / 100) * Number(i.bestStock!.pricePerUnit);
     }, 0);
   const costPerPortion = currentServings > 0 ? estimatedCost / currentServings : 0;
