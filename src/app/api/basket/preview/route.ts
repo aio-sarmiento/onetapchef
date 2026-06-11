@@ -43,38 +43,11 @@ const vendorSelect = {
   select: { id: true, businessName: true, address: true, contactPhone: true },
 } satisfies Prisma.VendorProfileArgs;
 
-type CandidateVendor = { id: string; businessName: string; address: string; contactPhone: string | null };
-
 type StockCandidate = Prisma.VendorStockGetPayload<{
   include: { vendor: typeof vendorSelect };
 }>;
 
 const ACTIVE_STATUSES: StockStatus[] = [StockStatus.available, StockStatus.low];
-
-async function fetchCandidates(ingredientId: string, today: Date): Promise<StockCandidate[]> {
-  const baseWhere: Prisma.VendorStockWhereInput = {
-    ingredientId,
-    status: { in: ACTIVE_STATUSES },
-    expiryDate: { gte: today },
-    quantityAvailable: { gt: 0 },
-    vendor: { isAdminVerified: true },
-  };
-
-  const promoted = await prisma.vendorStock.findMany({
-    where: { ...baseWhere, isPromoted: true },
-    include: { vendor: vendorSelect },
-    orderBy: [{ status: "asc" }, { pricePerUnit: "asc" }],
-    take: 5,
-  });
-  if (promoted.length > 0) return promoted;
-
-  return prisma.vendorStock.findMany({
-    where: baseWhere,
-    include: { vendor: vendorSelect },
-    orderBy: [{ status: "asc" }, { pricePerUnit: "asc" }],
-    take: 5,
-  });
-}
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -90,7 +63,18 @@ export async function POST(req: NextRequest) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Aggregate scaled ingredient quantities across all recipes, skipping non-purchasable
+  // ── Query 1: fetch all recipes in one go ────────────────────────────────────
+  const recipes = await prisma.recipe.findMany({
+    where: { id: { in: items.map((i) => i.recipeId) } },
+    include: {
+      ingredients: {
+        include: { ingredient: { select: { name: true, category: true, purchasable: true } } },
+      },
+    },
+  });
+  const recipeMap = new Map(recipes.map((r) => [r.id, r]));
+
+  // ── Aggregate ingredient quantities across all basket recipes ───────────────
   const aggregated = new Map<string, {
     ingredientId: string;
     totalQty: number;
@@ -100,16 +84,8 @@ export async function POST(req: NextRequest) {
   }>();
 
   for (const item of items) {
-    const recipe = await prisma.recipe.findUnique({
-      where: { id: item.recipeId },
-      include: {
-        ingredients: {
-          include: { ingredient: { select: { name: true, category: true, purchasable: true } } },
-        },
-      },
-    });
+    const recipe = recipeMap.get(item.recipeId);
     if (!recipe) continue;
-
     for (const ri of recipe.ingredients) {
       if (excluded.has(ri.ingredientId)) continue;
       if (!ri.ingredient.purchasable) continue;
@@ -129,24 +105,49 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // For each ingredient: score all candidates by waste+cost, pick best + top-2 alternatives
+  if (aggregated.size === 0) {
+    return NextResponse.json({ groups: [], grandTotal: 0 });
+  }
+
+  const ingredientIds = Array.from(aggregated.keys());
+
+  // ── Query 2: fetch all vendor stock for all ingredients in one go ───────────
+  const allStock = await prisma.vendorStock.findMany({
+    where: {
+      ingredientId: { in: ingredientIds },
+      status: { in: ACTIVE_STATUSES },
+      expiryDate: { gte: today },
+      quantityAvailable: { gt: 0 },
+      vendor: { isAdminVerified: true },
+    },
+    include: { vendor: vendorSelect },
+    orderBy: [{ status: "asc" }, { pricePerUnit: "asc" }],
+  }) as StockCandidate[];
+
+  // Group stock by ingredient, keeping up to 5 per ingredient
+  const stockByIngredient = new Map<string, StockCandidate[]>();
+  for (const s of allStock) {
+    const list = stockByIngredient.get(s.ingredientId) ?? [];
+    if (list.length < 5) list.push(s);
+    stockByIngredient.set(s.ingredientId, list);
+  }
+
+  // ── Score and select best vendor per ingredient (all in memory) ─────────────
   const vendorMap = new Map<string, {
-    vendor: CandidateVendor;
+    vendor: StockCandidate["vendor"];
     lines: PreviewVendorGroup["lineItems"][number][];
   }>();
 
   for (const [, agg] of Array.from(aggregated)) {
-    const candidates = await fetchCandidates(agg.ingredientId, today);
-    if (candidates.length === 0) continue;
+    const all = stockByIngredient.get(agg.ingredientId) ?? [];
+    if (all.length === 0) continue;
 
-    type Scored = {
-      stock: StockCandidate;
-      score: number;
-      totalCost: number;
-      packLabel: string;
-    };
+    // Prefer promoted stock; fall back to all if none promoted
+    const promoted = all.filter((s) => s.isPromoted);
+    const pool = promoted.length > 0 ? promoted : all;
 
-    const scored: Scored[] = candidates.map((s) => {
+    type Scored = { stock: StockCandidate; score: number; totalCost: number; packLabel: string };
+    const scored: Scored[] = pool.map((s) => {
       const pkgSize = Number(s.packageSize);
       const pricePer100g = Number(s.pricePerUnit);
       const { totalQty: orderedQty, packLabel } = roundToPacks(agg.totalQty, agg.category, pkgSize);

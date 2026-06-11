@@ -35,26 +35,29 @@ export async function POST(req: NextRequest) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Aggregate scaled quantities, skipping non-purchasable and excluded ingredients
+  // ── Query 1: all recipes at once ────────────────────────────────────────────
+  const recipes = await prisma.recipe.findMany({
+    where: { id: { in: items.map((i) => i.recipeId) } },
+    include: {
+      ingredients: {
+        include: { ingredient: { select: { category: true, purchasable: true } } },
+      },
+    },
+  });
+  const recipeMap = new Map(recipes.map((r) => [r.id, r]));
+
+  // ── Aggregate quantities ────────────────────────────────────────────────────
   const aggregated = new Map<
     string,
     { ingredientId: string; totalQty: number; unit: string; category: string }
   >();
 
   for (const item of items) {
-    const recipe = await prisma.recipe.findUnique({
-      where: { id: item.recipeId },
-      include: {
-        ingredients: {
-          include: { ingredient: { select: { category: true, purchasable: true } } },
-        },
-      },
-    });
+    const recipe = recipeMap.get(item.recipeId);
     if (!recipe) continue;
-
     for (const ri of recipe.ingredients) {
       if (excluded.has(ri.ingredientId)) continue;
-      if (!ri.ingredient.purchasable) continue; // skip water, ice, etc.
+      if (!ri.ingredient.purchasable) continue;
       const scaled = scaleQuantity(Number(ri.quantity), recipe.baseServings, item.servings);
       const existing = aggregated.get(ri.ingredientId);
       if (existing) {
@@ -70,7 +73,34 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Group by best vendor using waste+cost scoring
+  if (aggregated.size === 0) {
+    return NextResponse.json(
+      { error: "None of the required ingredients are currently available." },
+      { status: 422 }
+    );
+  }
+
+  // ── Query 2: all vendor stock at once ───────────────────────────────────────
+  const allStock = await prisma.vendorStock.findMany({
+    where: {
+      ingredientId: { in: Array.from(aggregated.keys()) },
+      status: { in: ACTIVE_STATUSES },
+      expiryDate: { gte: today },
+      quantityAvailable: { gt: 0 },
+      vendor: { isAdminVerified: true },
+    },
+    orderBy: [{ status: "asc" }, { pricePerUnit: "asc" }],
+  });
+
+  // Group by ingredient, keeping up to 5 per ingredient
+  const stockByIngredient = new Map<string, typeof allStock>();
+  for (const s of allStock) {
+    const list = stockByIngredient.get(s.ingredientId) ?? [];
+    if (list.length < 5) list.push(s);
+    stockByIngredient.set(s.ingredientId, list);
+  }
+
+  // ── Score and group by best vendor ─────────────────────────────────────────
   const vendorGroups = new Map<
     string,
     Array<{
@@ -82,29 +112,14 @@ export async function POST(req: NextRequest) {
     }>
   >();
 
-  const baseStockWhere: Prisma.VendorStockWhereInput = {
-    status: { in: ACTIVE_STATUSES },
-    expiryDate: { gte: today },
-    quantityAvailable: { gt: 0 },
-    vendor: { isAdminVerified: true },
-  };
-
   for (const [, agg] of Array.from(aggregated)) {
-    let candidates = await prisma.vendorStock.findMany({
-      where: { ingredientId: agg.ingredientId, ...baseStockWhere, isPromoted: true },
-      orderBy: [{ status: "asc" }, { pricePerUnit: "asc" }],
-      take: 5,
-    });
-    if (candidates.length === 0) {
-      candidates = await prisma.vendorStock.findMany({
-        where: { ingredientId: agg.ingredientId, ...baseStockWhere },
-        orderBy: [{ status: "asc" }, { pricePerUnit: "asc" }],
-        take: 5,
-      });
-    }
-    if (candidates.length === 0) continue;
+    const all = stockByIngredient.get(agg.ingredientId) ?? [];
+    if (all.length === 0) continue;
 
-    const best = candidates
+    const promoted = all.filter((s) => s.isPromoted);
+    const pool = promoted.length > 0 ? promoted : all;
+
+    const best = pool
       .map((s) => ({
         stock: s,
         score: scoreVendorOption(agg.totalQty, Number(s.packageSize), Number(s.pricePerUnit)),
@@ -138,7 +153,6 @@ export async function POST(req: NextRequest) {
         (sum, li) => sum + li.quantityRequested * li.pricePerUnit,
         0
       );
-
       return prisma.order.create({
         data: {
           studentId: user.id,
