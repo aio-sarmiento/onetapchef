@@ -73,20 +73,23 @@ export default function BasketPage() {
     if (items.length === 0) { setPreview(null); return; }
     const controller = new AbortController();
     setPreviewLoading(true);
-    fetch("/api/basket/preview", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        items: items.map((i) => ({ recipeId: i.recipeId, servings: i.servings })),
-        excludedIngredientIds: Array.from(excluded),
-      }),
-      signal: controller.signal,
-    })
-      .then((r) => r.json())
-      .then((data) => { if (!controller.signal.aborted) setPreview(data); })
-      .catch(() => {})
-      .finally(() => { if (!controller.signal.aborted) setPreviewLoading(false); });
-    return () => controller.abort();
+    // Debounce: wait 400ms before firing so rapid servings changes don't spam the API
+    const timer = setTimeout(() => {
+      fetch("/api/basket/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((i) => ({ recipeId: i.recipeId, servings: i.servings })),
+          excludedIngredientIds: Array.from(excluded),
+        }),
+        signal: controller.signal,
+      })
+        .then((r) => r.json())
+        .then((data) => { if (!controller.signal.aborted) setPreview(data); })
+        .catch(() => {})
+        .finally(() => { if (!controller.signal.aborted) setPreviewLoading(false); });
+    }, 400);
+    return () => { clearTimeout(timer); controller.abort(); };
   }, [items, excluded]);
 
   async function handleCheckout() {
