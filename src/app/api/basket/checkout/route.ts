@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { scaleQuantity } from "@/lib/utils";
+import { roundToPacks } from "@/lib/vendor-units";
 
 const checkoutSchema = z.object({
   items: z.array(
@@ -34,13 +35,13 @@ export async function POST(req: NextRequest) {
   // Step 1+2: Load all recipe ingredients and compute scaled quantities
   const aggregated = new Map<
     string,
-    { ingredientId: string; totalQty: number; unit: string }
+    { ingredientId: string; totalQty: number; unit: string; category: string }
   >();
 
   for (const item of items) {
     const recipe = await prisma.recipe.findUnique({
       where: { id: item.recipeId },
-      include: { ingredients: true },
+      include: { ingredients: { include: { ingredient: { select: { category: true } } } } },
     });
     if (!recipe) continue;
 
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
           ingredientId: ri.ingredientId,
           totalQty: scaled,
           unit: ri.unit,
+          category: ri.ingredient.category,
         });
       }
     }
@@ -91,14 +93,20 @@ export async function POST(req: NextRequest) {
 
     if (!stock) continue; // ingredient not available — skip
 
+    // Round up to nearest vendor pack
+    const { totalQty: orderedQty } = roundToPacks(agg.totalQty, agg.category);
+
+    // pricePerUnit stored as €/100g — convert to €/g for order line items
+    const pricePerGram = Number(stock.pricePerUnit) / 100;
+
     const vendorId = stock.vendorId;
     const group = vendorGroups.get(vendorId) ?? [];
     group.push({
       ingredientId: agg.ingredientId,
       stockId: stock.id,
-      quantityRequested: agg.totalQty,
+      quantityRequested: orderedQty,
       unit: agg.unit,
-      pricePerUnit: Number(stock.pricePerUnit),
+      pricePerUnit: pricePerGram,
     });
     vendorGroups.set(vendorId, group);
   }

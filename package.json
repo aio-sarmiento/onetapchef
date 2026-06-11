@@ -14,7 +14,8 @@
     "db:studio": "prisma studio",
     "db:seed": "ts-node --project tsconfig.seed.json prisma/seed.ts",
     "db:seed-dev": "ts-node --project tsconfig.seed.json prisma/seed-dev-users.ts",
-    "db:seed-recipes": "ts-node --project tsconfig.seed.json prisma/seed-recipes.ts"
+    "db:seed-recipes": "ts-node --project tsconfig.seed.json prisma/seed-recipes.ts",
+    "db:fix-prices": "ts-node --project tsconfig.seed.json prisma/fix-stock-prices.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { createClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/utils";
 
@@ -27,35 +28,40 @@ export async function GET(req: NextRequest) {
     resolvedAuthorId = user?.id ?? null;
   }
 
-  const recipes = await prisma.recipe.findMany({
-    where: {
-      ...(resolvedAuthorId ? { authorId: resolvedAuthorId } : { isPublished: true }),
-      availabilityScore: { gte: minScore },
-      ...(category && { category }),
-      ...(cuisine && { cuisine }),
-      ...(dietary && { dietaryTags: { has: dietary } }),
-      ...(q && {
-        OR: [
-          { title: { contains: q, mode: "insensitive" } },
-          { description: { contains: q, mode: "insensitive" } },
-        ],
-      }),
-    },
-    include: {
-      author: { select: { id: true, displayName: true, avatarUrl: true } },
-      _count: { select: { ingredients: true } },
-    },
-    orderBy:
-      sort === "availability"
-        ? { availabilityScore: "desc" }
-        : sort === "newest"
-        ? { createdAt: "desc" }
-        : { viewCount: "desc" },
-    skip: (page - 1) * limit,
-    take: limit,
-  });
+  const where: Prisma.RecipeWhereInput = {
+    ...(resolvedAuthorId ? { authorId: resolvedAuthorId } : { isPublished: true }),
+    availabilityScore: { gte: minScore },
+    ...(category && { category }),
+    ...(cuisine && { cuisine }),
+    ...(dietary && { dietaryTags: { has: dietary } }),
+    ...(q && {
+      OR: [
+        { title: { contains: q, mode: Prisma.QueryMode.insensitive } },
+        { description: { contains: q, mode: Prisma.QueryMode.insensitive } },
+      ],
+    }),
+  };
 
-  return NextResponse.json(recipes);
+  const [recipes, total] = await Promise.all([
+    prisma.recipe.findMany({
+      where,
+      include: {
+        author: { select: { id: true, displayName: true, avatarUrl: true } },
+        _count: { select: { ingredients: true } },
+      },
+      orderBy:
+        sort === "availability"
+          ? { availabilityScore: "desc" }
+          : sort === "newest"
+          ? { createdAt: "desc" }
+          : { viewCount: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.recipe.count({ where }),
+  ]);
+
+  return NextResponse.json({ data: recipes, total });
 }
 
 const ingredientSchema = z.object({

@@ -326,7 +326,25 @@ async function main() {
     const daysAhead = expiryOptions[Math.floor(Math.random() * expiryOptions.length)];
     const expiry = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000);
     const qty = Math.floor(Math.random() * 1800) + 200;
-    const price = parseFloat((Math.random() * 4.5 + 0.5).toFixed(2));
+
+    // Realistic price per gram based on category
+    const ingRecord = await prisma.ingredient.findUnique({ where: { id: ing.id }, select: { category: true } });
+    const category = ingRecord?.category ?? "Other";
+    const priceRanges: Record<string, { min: number; max: number }> = {
+      "Protein":    { min: 1.00, max: 2.20 },
+      "Vegetable":  { min: 0.10, max: 0.40 },
+      "Fruit":      { min: 0.15, max: 0.50 },
+      "Dairy":      { min: 0.20, max: 1.20 },
+      "Grain":      { min: 0.10, max: 0.30 },
+      "Spice":      { min: 0.60, max: 2.00 },
+      "Condiment":  { min: 0.20, max: 0.80 },
+      "Baking":     { min: 0.10, max: 0.30 },
+      "Nut & Seed": { min: 0.80, max: 1.80 },
+      "Other":      { min: 0.10, max: 0.50 },
+    };
+    const range = priceRanges[category] ?? priceRanges["Other"];
+    const hash = (ing.id.split("").reduce((s: number, c: string) => s + c.charCodeAt(0), 0) % 100) / 100;
+    const price = Math.round((range.min + hash * (range.max - range.min)) * 100) / 100;
 
     await prisma.vendorStock.create({
       data: {

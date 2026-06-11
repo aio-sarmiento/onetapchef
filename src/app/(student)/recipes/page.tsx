@@ -25,7 +25,8 @@ async function fetchMyRecipes(): Promise<Recipe[]> {
   const me = await meRes.json();
   const res = await fetch(`/api/recipes?authorId=${me.id}&limit=48`);
   if (!res.ok) throw new Error("Failed to load");
-  return res.json();
+  const json = await res.json();
+  return json.data ?? json; // handle both new {data,total} and legacy array
 }
 
 function AvailabilityDot({ score }: { score: number }) {

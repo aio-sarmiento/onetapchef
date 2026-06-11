@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { scaleQuantity } from "@/lib/utils";
+import { roundToPacks } from "@/lib/vendor-units";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +24,7 @@ export type PreviewVendorGroup = {
   lineItems: {
     ingredientId: string;
     ingredientName: string;
-    quantity: number;
-    unit: string;
+    packLabel: string;
     pricePerUnit: number;
     lineTotal: number;
   }[];
@@ -44,13 +44,23 @@ export async function POST(req: NextRequest) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Aggregate ingredient quantities across all recipes (skip excluded)
-  const aggregated = new Map<string, { ingredientId: string; totalQty: number; unit: string; name: string }>();
+  // Aggregate scaled ingredient quantities across all recipes
+  const aggregated = new Map<string, {
+    ingredientId: string;
+    totalQty: number;
+    unit: string;
+    name: string;
+    category: string;
+  }>();
 
   for (const item of items) {
     const recipe = await prisma.recipe.findUnique({
       where: { id: item.recipeId },
-      include: { ingredients: { include: { ingredient: { select: { name: true } } } } },
+      include: {
+        ingredients: {
+          include: { ingredient: { select: { name: true, category: true } } },
+        },
+      },
     });
     if (!recipe) continue;
 
@@ -66,15 +76,16 @@ export async function POST(req: NextRequest) {
           totalQty: scaled,
           unit: ri.unit,
           name: ri.ingredient.name,
+          category: ri.ingredient.category,
         });
       }
     }
   }
 
-  // Group by best vendor
+  // Group by best vendor, applying minimum pack rounding
   const vendorMap = new Map<string, {
     vendor: { id: string; businessName: string; address: string; contactPhone: string | null };
-    lines: { ingredientId: string; ingredientName: string; quantity: number; unit: string; pricePerUnit: number; lineTotal: number }[];
+    lines: PreviewVendorGroup["lineItems"][number][];
   }>();
 
   for (const [, agg] of Array.from(aggregated)) {
@@ -91,15 +102,19 @@ export async function POST(req: NextRequest) {
     });
     if (!stock) continue;
 
-    const pricePerUnit = Number(stock.pricePerUnit);
-    const lineTotal = agg.totalQty * pricePerUnit;
+    // pricePerUnit is stored as €/100g — divide by 100 to get €/g
+    const pricePer100g = Number(stock.pricePerUnit);
+
+    // Round up to nearest vendor pack
+    const { totalQty: orderedQty, packLabel } = roundToPacks(agg.totalQty, agg.category);
+    const lineTotal = (orderedQty / 100) * pricePer100g;
+
     const entry = vendorMap.get(stock.vendorId) ?? { vendor: stock.vendor, lines: [] };
     entry.lines.push({
       ingredientId: agg.ingredientId,
       ingredientName: agg.name,
-      quantity: agg.totalQty,
-      unit: agg.unit,
-      pricePerUnit,
+      packLabel,
+      pricePerUnit: pricePer100g,
       lineTotal,
     });
     vendorMap.set(stock.vendorId, entry);

@@ -17,8 +17,7 @@ import { cn } from "@/lib/utils";
 type LineItem = {
   ingredientId: string;
   ingredientName: string;
-  quantity: number;
-  unit: string;
+  packLabel: string;
   pricePerUnit: number;
   lineTotal: number;
 };
@@ -219,8 +218,7 @@ export default function BasketPage() {
                       )}
                     >
                       <span className="flex-1">{line.ingredientName}</span>
-                      <span>{line.quantity.toFixed(2)} {line.unit}</span>
-                      <span>× {formatCurrency(line.pricePerUnit)}</span>
+                      <span className="text-muted-foreground">{line.packLabel}</span>
                       <span className={cn("font-medium w-14 text-right", !isExcluded && "text-foreground")}>
                         {formatCurrency(line.lineTotal)}
                       </span>

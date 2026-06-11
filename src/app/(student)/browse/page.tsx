@@ -44,10 +44,12 @@ type Recipe = {
   author: { displayName: string };
 };
 
+type RecipePage = { data: Recipe[]; total: number };
+
 async function fetchRecipesPage(
   params: URLSearchParams,
   page: number
-): Promise<Recipe[]> {
+): Promise<RecipePage> {
   params.set("page", String(page));
   params.set("limit", String(PAGE_SIZE));
   const res = await fetch(`/api/recipes?${params}`);
@@ -113,11 +115,12 @@ export default function BrowsePage() {
     queryFn: ({ pageParam }) => fetchRecipesPage(new URLSearchParams(params), pageParam as number),
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages) =>
-      lastPage.length === PAGE_SIZE ? allPages.length + 1 : undefined,
+      lastPage.data.length === PAGE_SIZE ? allPages.length + 1 : undefined,
     staleTime: 30 * 1000,
   });
 
-  const recipes = data?.pages.flat() ?? [];
+  const recipes = data?.pages.flatMap((p) => p.data) ?? [];
+  const total = data?.pages[0]?.total ?? 0;
 
   // Intersection observer for infinite scroll
   const handleObserver = useCallback(
@@ -289,7 +292,7 @@ export default function BrowsePage() {
       ) : (
         <>
           <p className="text-sm text-muted-foreground">
-            {recipes.length} recipe{recipes.length !== 1 ? "s" : ""}
+            {total} recipe{total !== 1 ? "s" : ""}
             {selectMode && selectedIds.size > 0 && ` · ${selectedIds.size} selected`}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
