@@ -33,8 +33,16 @@ async function fetchMyStock(): Promise<{ vendorId: string; stock: StockItem[] }>
   return { vendorId, stock };
 }
 
-async function fetchIngredients(q: string): Promise<Ingredient[]> {
-  const res = await fetch(`/api/ingredients?q=${encodeURIComponent(q)}`);
+async function fetchIngredients(q: string, category: string): Promise<Ingredient[]> {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (category) params.set("category", category);
+  const res = await fetch(`/api/ingredients?${params}`);
+  return res.json();
+}
+
+async function fetchCategories(): Promise<string[]> {
+  const res = await fetch("/api/ingredients/categories");
   return res.json();
 }
 
@@ -44,15 +52,23 @@ export default function VendorStockPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [ingredientSearch, setIngredientSearch] = useState("");
+  const [browseCategory, setBrowseCategory] = useState("");
   const [selectedIngredient, setSelectedIngredient] = useState<Ingredient | null>(null);
   const [quantity, setQuantity] = useState("");
   const [price, setPrice] = useState("");
   const [expiry, setExpiry] = useState("");
 
+  const { data: categories = [] } = useQuery<string[]>({
+    queryKey: ["ingredient-categories"],
+    queryFn: fetchCategories,
+  });
+
+  const showResults = ingredientSearch.length > 1 || browseCategory !== "";
+
   const { data: ingredientResults = [] } = useQuery({
-    queryKey: ["ingredients", ingredientSearch],
-    queryFn: () => fetchIngredients(ingredientSearch),
-    enabled: ingredientSearch.length > 1,
+    queryKey: ["ingredients", ingredientSearch, browseCategory],
+    queryFn: () => fetchIngredients(ingredientSearch, browseCategory),
+    enabled: showResults,
   });
 
   const addMutation = useMutation({
@@ -128,22 +144,51 @@ export default function VendorStockPage() {
             <div className="space-y-2">
               <Label>Ingredient</Label>
               <Input
-                placeholder="Search for an ingredient…"
+                placeholder="Search by name…"
                 value={ingredientSearch}
                 onChange={(e) => {
                   setIngredientSearch(e.target.value);
+                  setBrowseCategory("");
                   setSelectedIngredient(null);
                 }}
               />
-              {ingredientResults.length > 0 && !selectedIngredient && (
-                <div className="border rounded-md divide-y max-h-48 overflow-y-auto">
+
+              {/* Category chips */}
+              {!selectedIngredient && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {categories.map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => {
+                        setBrowseCategory(browseCategory === cat ? "" : cat);
+                        setIngredientSearch("");
+                        setSelectedIngredient(null);
+                      }}
+                      className={`px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors ${
+                        browseCategory === cat
+                          ? "bg-brand text-white border-transparent"
+                          : "border-border hover:border-foreground"
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Results list */}
+              {showResults && ingredientResults.length > 0 && !selectedIngredient && (
+                <div className="border rounded-md divide-y max-h-52 overflow-y-auto">
                   {ingredientResults.map((ing) => (
                     <button
                       key={ing.id}
+                      type="button"
                       className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
                       onClick={() => {
                         setSelectedIngredient(ing);
                         setIngredientSearch(ing.name);
+                        setBrowseCategory("");
                       }}
                     >
                       <span className="font-medium">{ing.name}</span>
@@ -152,10 +197,20 @@ export default function VendorStockPage() {
                   ))}
                 </div>
               )}
+
               {selectedIngredient && (
-                <p className="text-xs text-brand font-medium">
-                  Selected: {selectedIngredient.name} · unit: {selectedIngredient.defaultUnit}
-                </p>
+                <div className="flex items-center justify-between text-xs">
+                  <p className="text-brand font-medium">
+                    Selected: {selectedIngredient.name} · unit: {selectedIngredient.defaultUnit}
+                  </p>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground underline"
+                    onClick={() => { setSelectedIngredient(null); setIngredientSearch(""); }}
+                  >
+                    Change
+                  </button>
+                </div>
               )}
             </div>
 

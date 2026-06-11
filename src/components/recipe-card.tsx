@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { Clock, Users, ChefHat } from "lucide-react";
+import { Clock, Users, ChefHat, Heart } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,11 @@ interface RecipeCardProps {
   category: string;
   availabilityScore: number;
   author: { displayName: string };
+  isSaved?: boolean;
+  isSelected?: boolean;
+  onSaveToggle?: (id: string) => void;
+  onSelect?: (id: string) => void;
+  selectMode?: boolean;
 }
 
 function AvailabilityBadge({ score }: { score: number }) {
@@ -27,6 +32,7 @@ function AvailabilityBadge({ score }: { score: number }) {
 }
 
 export function RecipeCard({
+  id,
   slug,
   title,
   description,
@@ -37,16 +43,29 @@ export function RecipeCard({
   category,
   availabilityScore,
   author,
+  isSaved = false,
+  isSelected = false,
+  onSaveToggle,
+  onSelect,
+  selectMode = false,
 }: RecipeCardProps) {
   const totalTime = prepTimeMinutes + cookTimeMinutes;
   const score = Number(availabilityScore);
 
+  function handleClick(e: React.MouseEvent) {
+    if (selectMode && onSelect) {
+      e.preventDefault();
+      onSelect(id);
+    }
+  }
+
   return (
-    <Link href={`/recipes/${slug}`}>
+    <Link href={`/recipes/${slug}`} onClick={handleClick}>
       <Card
         className={cn(
-          "overflow-hidden hover:shadow-md transition-shadow h-full flex flex-col",
-          score === 0 && "opacity-60"
+          "overflow-hidden hover:shadow-md transition-all h-full flex flex-col cursor-pointer",
+          score === 0 && !selectMode && "opacity-60",
+          isSelected && "ring-2 ring-brand ring-offset-1"
         )}
       >
         <div className="relative aspect-[4/3] bg-muted overflow-hidden">
@@ -60,6 +79,37 @@ export function RecipeCard({
           <div className="absolute top-2 left-2">
             <AvailabilityBadge score={score} />
           </div>
+
+          {/* Save button */}
+          {onSaveToggle && !selectMode && (
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSaveToggle(id); }}
+              className={cn(
+                "absolute top-2 right-2 rounded-full p-1.5 transition-colors shadow-sm",
+                isSaved
+                  ? "bg-brand text-white"
+                  : "bg-white/80 text-muted-foreground hover:text-brand hover:bg-white"
+              )}
+              aria-label={isSaved ? "Unsave recipe" : "Save recipe"}
+            >
+              <Heart className={cn("h-3.5 w-3.5", isSaved && "fill-current")} />
+            </button>
+          )}
+
+          {/* Select checkbox */}
+          {selectMode && (
+            <div className={cn(
+              "absolute top-2 right-2 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors",
+              isSelected ? "bg-brand border-brand" : "bg-white/80 border-white"
+            )}>
+              {isSelected && (
+                <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </div>
+          )}
         </div>
 
         <CardContent className="pt-4 pb-4 flex flex-col flex-1 gap-2">

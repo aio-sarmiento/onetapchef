@@ -12,6 +12,9 @@ const checkoutSchema = z.object({
     })
   ).min(1),
   studentNote: z.string().max(500).optional(),
+  deliveryType: z.enum(["pickup", "delivery"]).default("pickup"),
+  deliveryAddress: z.string().max(300).optional(),
+  excludedIngredientIds: z.array(z.string()).default([]),
 });
 
 export async function POST(req: NextRequest) {
@@ -23,7 +26,8 @@ export async function POST(req: NextRequest) {
   const parse = checkoutSchema.safeParse(body);
   if (!parse.success) return NextResponse.json({ error: parse.error.flatten() }, { status: 400 });
 
-  const { items, studentNote } = parse.data;
+  const { items, studentNote, deliveryType, deliveryAddress, excludedIngredientIds } = parse.data;
+  const excluded = new Set(excludedIngredientIds);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -41,6 +45,7 @@ export async function POST(req: NextRequest) {
     if (!recipe) continue;
 
     for (const ri of recipe.ingredients) {
+      if (excluded.has(ri.ingredientId)) continue;
       const scaled = scaleQuantity(
         Number(ri.quantity),
         recipe.baseServings,
@@ -119,6 +124,8 @@ export async function POST(req: NextRequest) {
           vendorId,
           estimatedTotal,
           studentNote,
+          deliveryType: deliveryType as "pickup" | "delivery",
+          ...(deliveryType === "delivery" && deliveryAddress ? { deliveryAddress } : {}),
           items: {
             create: lineItems.map((li) => ({
               ingredientId: li.ingredientId,

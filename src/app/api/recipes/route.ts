@@ -17,10 +17,19 @@ export async function GET(req: NextRequest) {
   const q = searchParams.get("q");
   const page = parseInt(searchParams.get("page") ?? "1");
   const limit = Math.min(parseInt(searchParams.get("limit") ?? "24"), 48);
+  const authorId = searchParams.get("authorId");
+
+  // Resolve "me" author shorthand
+  let resolvedAuthorId = authorId;
+  if (authorId === "me") {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    resolvedAuthorId = user?.id ?? null;
+  }
 
   const recipes = await prisma.recipe.findMany({
     where: {
-      isPublished: true,
+      ...(resolvedAuthorId ? { authorId: resolvedAuthorId } : { isPublished: true }),
       availabilityScore: { gte: minScore },
       ...(category && { category }),
       ...(cuisine && { cuisine }),

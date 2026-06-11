@@ -8,15 +8,20 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q") ?? "";
+  const category = searchParams.get("category") ?? "";
 
   const ingredients = await prisma.ingredient.findMany({
-    where: q ? { name: { contains: q, mode: "insensitive" } } : undefined,
+    where: {
+      ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),
+      ...(category ? { category } : {}),
+    },
     orderBy: { name: "asc" },
-    take: 50,
+    take: 100,
   });
 
   return NextResponse.json(ingredients);
 }
+
 
 const createSchema = z.object({
   name: z.string().min(1).max(120),

@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
-import { Package, ClipboardList, AlertTriangle } from "lucide-react";
+import { Package, ClipboardList, AlertTriangle, TrendingUp, ShoppingBag, CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -32,7 +32,9 @@ export default async function VendorDashboard() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const [activeStock, pendingOrders, expiringCount] = await Promise.all([
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+  const [activeStock, pendingOrders, expiringCount, topIngredients] = await Promise.all([
     prisma.vendorStock.count({
       where: { vendorId: vendor.id, status: { in: ["available", "low"] } },
     }),
@@ -49,7 +51,27 @@ export default async function VendorDashboard() {
         },
       },
     }),
+    prisma.orderItem.groupBy({
+      by: ["ingredientId"],
+      _count: { id: true },
+      where: { order: { createdAt: { gte: since } } },
+      orderBy: { _count: { id: "desc" } },
+      take: 6,
+    }),
   ]);
+
+  const ingredientNames = await prisma.ingredient.findMany({
+    where: { id: { in: topIngredients.map((i) => i.ingredientId) } },
+    select: { id: true, name: true },
+  });
+  const nameMap = new Map(ingredientNames.map((i) => [i.id, i.name]));
+
+  const myStockedIds = new Set(
+    (await prisma.vendorStock.findMany({
+      where: { vendorId: vendor.id, ingredientId: { in: topIngredients.map((i) => i.ingredientId) }, status: { in: ["available", "low"] } },
+      select: { ingredientId: true },
+    })).map((s) => s.ingredientId)
+  );
 
   const recentRequests = await prisma.order.findMany({
     where: { vendorId: vendor.id, status: "pending" },
@@ -126,6 +148,43 @@ export default async function VendorDashboard() {
           </Link>
         </Button>
       </div>
+
+      {/* Demand insights */}
+      {topIngredients.length > 0 && (
+        <div>
+          <h2 className="text-xl font-semibold mb-1 flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-brand" />
+            Most requested this week
+          </h2>
+          <p className="text-sm text-muted-foreground mb-4">Ingredients students are ordering across the platform.</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {topIngredients.map((item) => {
+              const name = nameMap.get(item.ingredientId) ?? "Unknown";
+              const stocked = myStockedIds.has(item.ingredientId);
+              return (
+                <Card key={item.ingredientId} className={stocked ? "border-brand/30 bg-brand-muted/20" : undefined}>
+                  <CardContent className="p-3 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-sm line-clamp-1">{name}</p>
+                      <p className="text-xs text-muted-foreground">{item._count.id} orders</p>
+                    </div>
+                    {stocked ? (
+                      <CheckCircle2 className="h-4 w-4 text-brand shrink-0" />
+                    ) : (
+                      <Button asChild size="sm" variant="outline" className="h-7 text-xs shrink-0">
+                        <Link href="/vendor/stock">
+                          <ShoppingBag className="h-3 w-3 mr-1" />
+                          List it
+                        </Link>
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Recent pending requests */}
       {recentRequests.length > 0 && (

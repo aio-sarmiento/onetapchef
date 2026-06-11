@@ -24,9 +24,16 @@ enum StockStatus {
 enum OrderStatus {
   pending
   confirmed
-  ready
-  completed
+  ready_for_pickup
+  out_for_delivery
+  collected
+  delivered
   cancelled
+}
+
+enum DeliveryType {
+  pickup
+  delivery
 }
 
 model User {
@@ -44,6 +51,7 @@ model User {
   baskets        Basket[]
   ordersAsStudent Order[]  @relation("StudentOrders")
   comments       Comment[]
+  savedRecipes   SavedRecipe[]
 
   @@map("users")
 }
@@ -135,10 +143,11 @@ model Recipe {
   viewCount        Int      @default(0) @map("view_count")
   shareCount       Int      @default(0) @map("share_count")
 
-  author      User               @relation(fields: [authorId], references: [id])
-  ingredients RecipeIngredient[]
-  basketItems BasketItem[]
-  comments    Comment[]
+  author       User               @relation(fields: [authorId], references: [id])
+  ingredients  RecipeIngredient[]
+  basketItems  BasketItem[]
+  comments     Comment[]
+  savedByUsers SavedRecipe[]
 
   @@map("recipes")
 }
@@ -187,15 +196,19 @@ model BasketItem {
 }
 
 model Order {
-  id             String      @id @default(uuid())
-  studentId      String      @map("student_id")
-  vendorId       String      @map("vendor_id")
-  status         OrderStatus @default(pending)
-  studentNote    String?     @map("student_note")
-  vendorNote     String?     @map("vendor_note")
-  estimatedTotal Decimal     @map("estimated_total") @db.Decimal(10, 2)
-  createdAt      DateTime    @default(now()) @map("created_at")
-  updatedAt      DateTime    @updatedAt @map("updated_at")
+  id               String       @id @default(uuid())
+  studentId        String       @map("student_id")
+  vendorId         String       @map("vendor_id")
+  status           OrderStatus  @default(pending)
+  deliveryType     DeliveryType @default(pickup) @map("delivery_type")
+  deliveryAddress  String?      @map("delivery_address")
+  glovoOrderId     String?      @map("glovo_order_id")
+  glovoTrackingUrl String?      @map("glovo_tracking_url")
+  studentNote      String?      @map("student_note")
+  vendorNote       String?      @map("vendor_note")
+  estimatedTotal   Decimal      @map("estimated_total") @db.Decimal(10, 2)
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
 
   student User          @relation("StudentOrders", fields: [studentId], references: [id])
   vendor  VendorProfile @relation(fields: [vendorId], references: [id])
@@ -236,4 +249,17 @@ model Comment {
   replies       Comment[] @relation("CommentReplies")
 
   @@map("comments")
+}
+
+model SavedRecipe {
+  id       String   @id @default(uuid())
+  userId   String   @map("user_id")
+  recipeId String   @map("recipe_id")
+  savedAt  DateTime @default(now()) @map("saved_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, recipeId])
+  @@map("saved_recipes")
 }

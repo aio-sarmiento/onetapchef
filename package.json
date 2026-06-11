@@ -12,7 +12,9 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "db:seed": "ts-node --project tsconfig.seed.json prisma/seed.ts"
+    "db:seed": "ts-node --project tsconfig.seed.json prisma/seed.ts",
+    "db:seed-dev": "ts-node --project tsconfig.seed.json prisma/seed-dev-users.ts",
+    "db:seed-recipes": "ts-node --project tsconfig.seed.json prisma/seed-recipes.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -45,6 +47,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.0.1",
+    "dotenv": "^17.4.2",
     "eslint": "^8",
     "eslint-config-next": "14.2.16",
     "postcss": "^8",

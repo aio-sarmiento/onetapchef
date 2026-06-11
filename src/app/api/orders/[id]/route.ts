@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 
 const statusSchema = z.object({
-  status: z.enum(["ready", "completed", "cancelled"]),
+  status: z.enum(["ready_for_pickup", "out_for_delivery", "collected", "delivered", "cancelled"]),
   note: z.string().max(500).optional(),
 });
 
@@ -37,11 +37,14 @@ export async function PUT(
   const { status, note } = parse.data;
 
   // Enforce transition rules
-  if (status === "ready" && !isVendor) {
-    return NextResponse.json({ error: "Only vendor can mark ready" }, { status: 403 });
+  const vendorStatuses = new Set(["ready_for_pickup", "out_for_delivery", "cancelled"]);
+  const studentStatuses = new Set(["collected", "delivered"]);
+
+  if (vendorStatuses.has(status) && !isVendor) {
+    return NextResponse.json({ error: "Only vendor can set this status" }, { status: 403 });
   }
-  if (status === "completed" && !isStudent) {
-    return NextResponse.json({ error: "Only student can mark completed" }, { status: 403 });
+  if (studentStatuses.has(status) && !isStudent) {
+    return NextResponse.json({ error: "Only student can set this status" }, { status: 403 });
   }
 
   const updated = await prisma.order.update({

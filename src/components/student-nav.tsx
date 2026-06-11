@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChefHat, ShoppingBasket, BookOpen, PlusCircle, User, LogOut } from "lucide-react";
+import { ChefHat, ShoppingBasket, BookOpen, UtensilsCrossed, ClipboardList, Heart, User, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useBasketStore } from "@/stores/basket-store";
@@ -10,8 +10,9 @@ import { Button } from "@/components/ui/button";
 
 const navLinks = [
   { href: "/browse", label: "Browse", icon: BookOpen },
-  { href: "/recipes/new", label: "Submit Recipe", icon: PlusCircle },
-  { href: "/orders", label: "My Orders", icon: BookOpen },
+  { href: "/recipes", label: "My Recipes", icon: UtensilsCrossed },
+  { href: "/saved", label: "Saved", icon: Heart },
+  { href: "/orders", label: "Orders", icon: ClipboardList },
   { href: "/profile", label: "Profile", icon: User },
 ];
 
