@@ -34,10 +34,13 @@ export type PreviewVendorGroup = {
 const ACTIVE_STATUSES: StockStatus[] = [StockStatus.available, StockStatus.low];
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now();
+
   const supabase = await createClient();
-  // getSession() reads the JWT from cookies locally — no network round-trip to Supabase Auth
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+
+  const tAuth = Date.now();
 
   const body = await req.json();
   const parse = previewSchema.safeParse(body);
@@ -63,6 +66,8 @@ export async function POST(req: NextRequest) {
       select: { id: true },
     }),
   ]);
+
+  const tDB1 = Date.now();
 
   const recipeMap = new Map(recipes.map((r) => [r.id, r]));
   const verifiedVendorIds = verifiedVendors.map((v) => v.id);
@@ -122,6 +127,8 @@ export async function POST(req: NextRequest) {
     orderBy: { pricePerUnit: "asc" },
   });
 
+  const tDB2 = Date.now();
+
   // Group by ingredient
   type StockRow = typeof allStock[number];
   const stockByIngredient = new Map<string, StockRow[]>();
@@ -174,5 +181,11 @@ export async function POST(req: NextRequest) {
 
   const grandTotal = Math.round(groups.reduce((s, g) => s + g.subtotal, 0) * 100) / 100;
 
-  return NextResponse.json({ groups, grandTotal });
+  const tTotal = Date.now();
+  const res = NextResponse.json({ groups, grandTotal });
+  res.headers.set("X-Timing-Auth-ms", String(tAuth - t0));
+  res.headers.set("X-Timing-DB1-ms", String(tDB1 - tAuth));
+  res.headers.set("X-Timing-DB2-ms", String(tDB2 - tDB1));
+  res.headers.set("X-Timing-Total-ms", String(tTotal - t0));
+  return res;
 }
