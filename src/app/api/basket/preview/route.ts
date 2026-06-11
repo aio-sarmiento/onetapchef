@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { Prisma, StockStatus } from "@prisma/client";
+import { StockStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { scaleQuantity } from "@/lib/utils";
@@ -31,14 +31,6 @@ export type PreviewVendorGroup = {
   }[];
 };
 
-const vendorSelect = {
-  select: { id: true, businessName: true, address: true, contactPhone: true },
-} satisfies Prisma.VendorProfileArgs;
-
-type StockCandidate = Prisma.VendorStockGetPayload<{
-  include: { vendor: typeof vendorSelect };
-}>;
-
 const ACTIVE_STATUSES: StockStatus[] = [StockStatus.available, StockStatus.low];
 
 export async function POST(req: NextRequest) {
@@ -55,16 +47,24 @@ export async function POST(req: NextRequest) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // ── Query 1: all recipes at once ────────────────────────────────────────────
-  const recipes = await prisma.recipe.findMany({
-    where: { id: { in: items.map((i) => i.recipeId) } },
-    include: {
-      ingredients: {
-        include: { ingredient: { select: { name: true, category: true, purchasable: true } } },
+  // ── Queries 1+2 in parallel: recipes + verified vendor IDs ──────────────────
+  const [recipes, verifiedVendors] = await Promise.all([
+    prisma.recipe.findMany({
+      where: { id: { in: items.map((i) => i.recipeId) } },
+      include: {
+        ingredients: {
+          include: { ingredient: { select: { name: true, category: true, purchasable: true } } },
+        },
       },
-    },
-  });
+    }),
+    prisma.vendorProfile.findMany({
+      where: { isAdminVerified: true },
+      select: { id: true },
+    }),
+  ]);
+
   const recipeMap = new Map(recipes.map((r) => [r.id, r]));
+  const verifiedVendorIds = verifiedVendors.map((v) => v.id);
 
   // ── Aggregate ingredient quantities ─────────────────────────────────────────
   const aggregated = new Map<string, {
@@ -101,30 +101,38 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ groups: [], grandTotal: 0 });
   }
 
-  // ── Query 2: all vendor stock for all ingredients at once ───────────────────
+  // ── Query 3: all stock using vendorId IN (...) — no JOIN needed ─────────────
   const allStock = await prisma.vendorStock.findMany({
     where: {
       ingredientId: { in: Array.from(aggregated.keys()) },
+      vendorId: { in: verifiedVendorIds },
       status: { in: ACTIVE_STATUSES },
       expiryDate: { gte: today },
       quantityAvailable: { gt: 0 },
-      vendor: { isAdminVerified: true },
     },
-    include: { vendor: vendorSelect },
+    select: {
+      id: true,
+      vendorId: true,
+      ingredientId: true,
+      pricePerUnit: true,
+      packageSize: true,
+      vendor: { select: { id: true, businessName: true, address: true, contactPhone: true } },
+    },
     orderBy: { pricePerUnit: "asc" },
-  }) as StockCandidate[];
+  });
 
   // Group by ingredient
-  const stockByIngredient = new Map<string, StockCandidate[]>();
+  type StockRow = typeof allStock[number];
+  const stockByIngredient = new Map<string, StockRow[]>();
   for (const s of allStock) {
     const list = stockByIngredient.get(s.ingredientId) ?? [];
     list.push(s);
     stockByIngredient.set(s.ingredientId, list);
   }
 
-  // ── Pick cheapest total cost per ingredient (all in memory) ─────────────────
+  // ── Pick cheapest total cost per ingredient ──────────────────────────────────
   const vendorMap = new Map<string, {
-    vendor: StockCandidate["vendor"];
+    vendor: StockRow["vendor"];
     lines: PreviewVendorGroup["lineItems"][number][];
   }>();
 
@@ -132,17 +140,12 @@ export async function POST(req: NextRequest) {
     const candidates = stockByIngredient.get(agg.ingredientId) ?? [];
     if (candidates.length === 0) continue;
 
-    // Pick vendor with lowest total spend for the required quantity
     let best = candidates[0];
     let bestTotal = Infinity;
-
     for (const s of candidates) {
       const { totalQty: orderedQty } = roundToPacks(agg.totalQty, agg.category, Number(s.packageSize));
       const totalCost = (orderedQty / 100) * Number(s.pricePerUnit);
-      if (totalCost < bestTotal) {
-        bestTotal = totalCost;
-        best = s;
-      }
+      if (totalCost < bestTotal) { bestTotal = totalCost; best = s; }
     }
 
     const { totalQty: orderedQty, packLabel } = roundToPacks(agg.totalQty, agg.category, Number(best.packageSize));

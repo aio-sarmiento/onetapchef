@@ -33,16 +33,23 @@ export async function POST(req: NextRequest) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // ── Query 1: all recipes at once ────────────────────────────────────────────
-  const recipes = await prisma.recipe.findMany({
-    where: { id: { in: items.map((i) => i.recipeId) } },
-    include: {
-      ingredients: {
-        include: { ingredient: { select: { category: true, purchasable: true } } },
+  // ── Queries 1+2 in parallel: recipes + verified vendor IDs ──────────────────
+  const [recipes, verifiedVendors] = await Promise.all([
+    prisma.recipe.findMany({
+      where: { id: { in: items.map((i) => i.recipeId) } },
+      include: {
+        ingredients: {
+          include: { ingredient: { select: { category: true, purchasable: true } } },
+        },
       },
-    },
-  });
+    }),
+    prisma.vendorProfile.findMany({
+      where: { isAdminVerified: true },
+      select: { id: true },
+    }),
+  ]);
   const recipeMap = new Map(recipes.map((r) => [r.id, r]));
+  const verifiedVendorIds = verifiedVendors.map((v) => v.id);
 
   // ── Aggregate quantities ─────────────────────────────────────────────────────
   const aggregated = new Map<string, {
@@ -80,14 +87,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Query 2: all vendor stock at once ────────────────────────────────────────
+  // ── Query 3: all vendor stock using vendorId IN (...) — no JOIN needed ──────
   const allStock = await prisma.vendorStock.findMany({
     where: {
       ingredientId: { in: Array.from(aggregated.keys()) },
+      vendorId: { in: verifiedVendorIds },
       status: { in: ACTIVE_STATUSES },
       expiryDate: { gte: today },
       quantityAvailable: { gt: 0 },
-      vendor: { isAdminVerified: true },
     },
     orderBy: { pricePerUnit: "asc" },
   });

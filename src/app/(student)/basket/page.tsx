@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { Minus, Plus, Trash2, ShoppingBasket, ChefHat, ArrowRight, Truck, MapPin, Loader2, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useBasketStore } from "@/stores/basket-store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,10 +40,44 @@ export default function BasketPage() {
   const [deliveryType, setDeliveryType] = useState<"pickup" | "delivery">("pickup");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [loading, setLoading] = useState(false);
-  const [preview, setPreview] = useState<Preview | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const router = useRouter();
+
+  // Debounced versions of items/excluded — query key only updates 400ms after last change
+  const [debouncedKey, setDebouncedKey] = useState<[string, string[]]>(
+    [JSON.stringify(items.map((i) => ({ r: i.recipeId, s: i.servings }))), []]
+  );
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedKey([
+        JSON.stringify(items.map((i) => ({ r: i.recipeId, s: i.servings }))),
+        Array.from(excluded),
+      ]);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [items, excluded]);
+
+  const { data: preview, isFetching: previewLoading } = useQuery<Preview>({
+    queryKey: ["basket-preview", ...debouncedKey],
+    queryFn: async ({ signal }) => {
+      const [itemsJson, excludedArr] = debouncedKey;
+      const parsedItems = JSON.parse(itemsJson) as { r: string; s: number }[];
+      const res = await fetch("/api/basket/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: parsedItems.map((i) => ({ recipeId: i.r, servings: i.s })),
+          excludedIngredientIds: excludedArr,
+        }),
+        signal,
+      });
+      if (!res.ok) throw new Error("Preview failed");
+      return res.json();
+    },
+    enabled: items.length > 0,
+    staleTime: 60_000,
+    placeholderData: (prev) => prev,
+  });
 
   function toggleExclude(ingredientId: string) {
     setExcluded((prev) => {
@@ -51,29 +86,6 @@ export default function BasketPage() {
       return next;
     });
   }
-
-useEffect(() => {
-    if (items.length === 0) { setPreview(null); return; }
-    const controller = new AbortController();
-    setPreviewLoading(true);
-    // Debounce: wait 400ms before firing so rapid servings changes don't spam the API
-    const timer = setTimeout(() => {
-      fetch("/api/basket/preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((i) => ({ recipeId: i.recipeId, servings: i.servings })),
-          excludedIngredientIds: Array.from(excluded),
-        }),
-        signal: controller.signal,
-      })
-        .then((r) => r.json())
-        .then((data) => { if (!controller.signal.aborted) setPreview(data); })
-        .catch(() => {})
-        .finally(() => { if (!controller.signal.aborted) setPreviewLoading(false); });
-    }, 400);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [items, excluded]);
 
   async function handleCheckout() {
     if (items.length === 0) return;
