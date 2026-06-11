@@ -21,8 +21,9 @@ const checkoutSchema = z.object({
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+  const user = session.user;
 
   const body = await req.json();
   const parse = checkoutSchema.safeParse(body);

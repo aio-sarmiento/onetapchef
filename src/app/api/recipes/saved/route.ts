@@ -7,8 +7,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+  const user = session.user;
 
   const saved = await prisma.savedRecipe.findMany({
     where: { userId: user.id },
@@ -30,8 +31,9 @@ const saveSchema = z.object({ recipeId: z.string().uuid() });
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+  const user = session.user;
 
   const body = await req.json();
   const parse = saveSchema.safeParse(body);
@@ -48,8 +50,9 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+  const user = session.user;
 
   const { searchParams } = new URL(req.url);
   const recipeId = searchParams.get("recipeId");

@@ -32,7 +32,8 @@ const createSchema = z.object({
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
 
   if (!user || user.user_metadata?.role !== "admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

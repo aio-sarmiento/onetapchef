@@ -24,8 +24,8 @@ export async function GET(req: NextRequest) {
   let resolvedAuthorId = authorId;
   if (authorId === "me") {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    resolvedAuthorId = user?.id ?? null;
+    const { data: { session } } = await supabase.auth.getSession();
+    resolvedAuthorId = session?.user?.id ?? null;
   }
 
   const where: Prisma.RecipeWhereInput = {
@@ -88,8 +88,9 @@ const createSchema = z.object({
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+  const user = session.user;
 
   const body = await req.json();
   const parse = createSchema.safeParse(body);

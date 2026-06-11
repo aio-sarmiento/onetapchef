@@ -35,8 +35,9 @@ const ACTIVE_STATUSES: StockStatus[] = [StockStatus.available, StockStatus.low];
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+  // getSession() reads the JWT from cookies locally — no network round-trip to Supabase Auth
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
 
   const body = await req.json();
   const parse = previewSchema.safeParse(body);

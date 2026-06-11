@@ -123,6 +123,8 @@ model VendorStock {
   ingredient Ingredient    @relation(fields: [ingredientId], references: [id])
   orderItems OrderItem[]
 
+  @@index([ingredientId])
+  @@index([vendorId])
   @@map("vendor_stock")
 }
 
@@ -169,6 +171,8 @@ model RecipeIngredient {
   ingredient Ingredient @relation(fields: [ingredientId], references: [id])
 
   @@unique([recipeId, ingredientId])
+  @@index([recipeId])
+  @@index([ingredientId])
   @@map("recipe_ingredients")
 }
 
