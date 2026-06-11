@@ -86,6 +86,7 @@ export async function getIngredientAvailability(recipeId: string) {
     id: ri.id,
     ingredientId: ri.ingredientId,
     ingredientName: ri.ingredient.name,
+    category: ri.ingredient.category,
     quantity: Number(ri.quantity),
     unit: ri.unit,
     isOptional: ri.isOptional,

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { IngredientAvailabilityChip } from "@/components/ingredient-availability-chip";
 import { useBasketStore } from "@/stores/basket-store";
 import { scaleQuantity, formatCurrency } from "@/lib/utils";
+import { roundToPacks } from "@/lib/vendor-units";
 import { toast } from "@/hooks/use-toast";
 import { useStockRealtime } from "@/hooks/use-stock-realtime";
 
@@ -16,6 +17,7 @@ type IngredientAvailability = {
   id: string;
   ingredientId: string;
   ingredientName: string;
+  category: string;
   quantity: number;
   unit: string;
   isOptional: boolean;
@@ -74,12 +76,15 @@ export default function RecipeDetailPage() {
   const currentServings = servings ?? recipe.baseServings;
   const inBasket = hasItem(recipe.id);
 
+  // pricePerUnit is €/100g — round up to vendor packs and divide by 100 to match cart
   const estimatedCost = recipe.ingredientAvailability
     .filter((i) => i.bestStock && !i.isOptional)
     .reduce((sum, i) => {
       const scaled = scaleQuantity(i.quantity, recipe.baseServings, currentServings);
-      return sum + scaled * Number(i.bestStock!.pricePerUnit);
+      const { totalQty: orderedQty } = roundToPacks(scaled, i.category);
+      return sum + (orderedQty / 100) * Number(i.bestStock!.pricePerUnit);
     }, 0);
+  const costPerPortion = currentServings > 0 ? estimatedCost / currentServings : 0;
 
   function handleBasket() {
     if (!recipe) return;
@@ -180,9 +185,16 @@ export default function RecipeDetailPage() {
           </div>
 
           {estimatedCost > 0 && (
-            <p className="text-sm text-muted-foreground">
-              Estimated cost: <span className="font-semibold text-foreground">{formatCurrency(estimatedCost)}</span>
-            </p>
+            <div className="rounded-lg bg-muted px-3 py-2 space-y-0.5">
+              <div className="flex justify-between items-baseline">
+                <span className="text-xs text-muted-foreground">Per portion</span>
+                <span className="font-semibold text-foreground">{formatCurrency(costPerPortion)}</span>
+              </div>
+              <div className="flex justify-between items-baseline">
+                <span className="text-xs text-muted-foreground">Total for {currentServings} {currentServings === 1 ? "portion" : "portions"}</span>
+                <span className="text-sm font-bold text-foreground">{formatCurrency(estimatedCost)}</span>
+              </div>
+            </div>
           )}
 
           <Button
