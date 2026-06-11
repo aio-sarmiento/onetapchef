@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 import { createClient } from "@/lib/supabase/server";
-import { getIngredientAvailability } from "@/lib/availability";
 import { recomputeRecipeAvailability } from "@/lib/availability";
 
 export async function GET(
@@ -26,9 +25,7 @@ export async function GET(
   // Increment view count (fire-and-forget)
   prisma.recipe.update({ where: { id: recipe.id }, data: { viewCount: { increment: 1 } } }).catch(() => {});
 
-  const ingredientAvailability = await getIngredientAvailability(recipe.id);
-
-  return NextResponse.json({ ...recipe, ingredientAvailability });
+  return NextResponse.json(recipe);
 }
 
 const ingredientSchema = z.object({

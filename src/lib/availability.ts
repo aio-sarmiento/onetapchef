@@ -72,7 +72,7 @@ export async function getIngredientAvailability(recipeId: string) {
               expiryDate: { gte: today },
               quantityAvailable: { gt: 0 },
             },
-            include: { vendor: true },
+            include: { vendor: { select: { id: true, businessName: true } } },
             orderBy: [{ status: "asc" }, { pricePerUnit: "asc" }],
             take: 3,
           },

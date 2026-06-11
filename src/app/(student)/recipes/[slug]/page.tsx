@@ -46,7 +46,6 @@ type RecipeDetail = {
   instructions: string[];
   availabilityScore: number;
   author: { displayName: string };
-  ingredientAvailability: IngredientAvailability[];
 };
 
 async function fetchRecipe(slug: string): Promise<RecipeDetail> {
@@ -55,19 +54,33 @@ async function fetchRecipe(slug: string): Promise<RecipeDetail> {
   return res.json();
 }
 
+async function fetchAvailability(recipeId: string): Promise<IngredientAvailability[]> {
+  const res = await fetch(`/api/recipes/${recipeId}/availability`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
 export default function RecipeDetailPage() {
   const { slug } = useParams<{ slug: string }>();
+
+  // First query: recipe metadata — fast, page renders immediately
   const { data: recipe, isLoading, error } = useQuery({
     queryKey: ["recipe", slug],
     queryFn: () => fetchRecipe(slug),
   });
 
+  // Second query: ingredient availability — fires after recipe loads, non-blocking
+  const { data: ingredientAvailability = [], isLoading: availLoading } = useQuery({
+    queryKey: ["recipe-availability", recipe?.id],
+    queryFn: () => fetchAvailability(recipe!.id),
+    enabled: !!recipe?.id,
+  });
+
   const [servings, setServings] = useState<number | null>(null);
 
-  // Subscribe to live stock changes for all ingredients in this recipe
   useStockRealtime(
     recipe?.id ?? "",
-    recipe?.ingredientAvailability.map((i) => i.ingredientId) ?? []
+    ingredientAvailability.map((i) => i.ingredientId)
   );
   const { addItem, removeItem, hasItem } = useBasketStore();
 
@@ -77,8 +90,7 @@ export default function RecipeDetailPage() {
   const currentServings = servings ?? recipe.baseServings;
   const inBasket = hasItem(recipe.id);
 
-  // pricePerUnit is €/100g — use vendor's actual packageSize, round up to packs, divide by 100
-  const estimatedCost = recipe.ingredientAvailability
+  const estimatedCost = ingredientAvailability
     .filter((i) => i.bestStock && !i.isOptional)
     .reduce((sum, i) => {
       const scaled = scaleQuantity(i.quantity, recipe.baseServings, currentServings);
@@ -100,7 +112,6 @@ export default function RecipeDetailPage() {
         imageUrl: recipe.imageUrl,
         baseServings: recipe.baseServings,
       });
-      // Update servings in store if user changed them
       if (servings && servings !== recipe.baseServings) {
         useBasketStore.getState().updateServings(recipe.id, currentServings);
       }
@@ -185,7 +196,9 @@ export default function RecipeDetailPage() {
             </div>
           </div>
 
-          {estimatedCost > 0 && (
+          {availLoading ? (
+            <div className="rounded-lg bg-muted px-3 py-2 h-12 animate-pulse" />
+          ) : estimatedCost > 0 ? (
             <div className="rounded-lg bg-muted px-3 py-2 space-y-0.5">
               <div className="flex justify-between items-baseline">
                 <span className="text-xs text-muted-foreground">Per portion</span>
@@ -196,7 +209,7 @@ export default function RecipeDetailPage() {
                 <span className="text-sm font-bold text-foreground">{formatCurrency(estimatedCost)}</span>
               </div>
             </div>
-          )}
+          ) : null}
 
           <Button
             onClick={handleBasket}
@@ -212,21 +225,29 @@ export default function RecipeDetailPage() {
       {/* Ingredients */}
       <section className="mb-8">
         <h2 className="text-xl font-semibold mb-4">Ingredients</h2>
-        <div className="space-y-2">
-          {recipe.ingredientAvailability.map((ing) => (
-            <IngredientAvailabilityChip
-              key={ing.id}
-              name={ing.ingredientName}
-              quantity={ing.quantity}
-              unit={ing.unit}
-              isOptional={ing.isOptional}
-              preparationNote={ing.preparationNote}
-              availability={ing.availability}
-              bestStock={ing.bestStock}
-              scaledQuantity={scaleQuantity(ing.quantity, recipe.baseServings, currentServings)}
-            />
-          ))}
-        </div>
+        {availLoading ? (
+          <div className="space-y-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-10 rounded-lg bg-muted animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {ingredientAvailability.map((ing) => (
+              <IngredientAvailabilityChip
+                key={ing.id}
+                name={ing.ingredientName}
+                quantity={ing.quantity}
+                unit={ing.unit}
+                isOptional={ing.isOptional}
+                preparationNote={ing.preparationNote}
+                availability={ing.availability}
+                bestStock={ing.bestStock}
+                scaledQuantity={scaleQuantity(ing.quantity, recipe.baseServings, currentServings)}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Instructions */}
