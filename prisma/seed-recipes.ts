@@ -206,10 +206,14 @@ async function main() {
 
   let totalRecipes = 0;
   const seenSlugs = new Set<string>();
+  const seenTitles = new Set<string>();
 
-  // Pre-load existing slugs to avoid upsert collisions
-  const existingRecipes = await prisma.recipe.findMany({ select: { slug: true } });
-  existingRecipes.forEach((r) => seenSlugs.add(r.slug));
+  // Pre-load existing records so re-runs never create duplicates
+  const existingRecipes = await prisma.recipe.findMany({ select: { slug: true, title: true } });
+  existingRecipes.forEach((r) => {
+    seenSlugs.add(r.slug);
+    seenTitles.add(r.title.toLowerCase());
+  });
 
   const letters = "abcdefghijklmnopqrstuvwxyz".split("");
 
@@ -264,10 +268,15 @@ async function main() {
         const rawTitle = (detail.strMeal as string ?? "").trim();
         if (!rawTitle) continue;
 
+        // Skip if this title already exists (prevents duplicates on re-runs)
+        if (seenTitles.has(rawTitle.toLowerCase())) continue;
+        seenTitles.add(rawTitle.toLowerCase());
+
         let slug = slugify(rawTitle);
         if (!slug) continue;
+        // If slug collides (different title, same slug), append meal ID for uniqueness
         if (seenSlugs.has(slug)) slug = `${slug}-${detail.idMeal ?? ""}`;
-        if (seenSlugs.has(slug)) continue; // still duplicate — skip
+        if (seenSlugs.has(slug)) continue;
         seenSlugs.add(slug);
 
         const category = OUR_CATEGORY[strCategory] ?? "Dinner";
