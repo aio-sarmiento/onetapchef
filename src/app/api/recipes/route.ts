@@ -47,13 +47,15 @@ export async function GET(req: NextRequest) {
       where,
       include: {
         author: { select: { id: true, displayName: true, avatarUrl: true } },
-        _count: { select: { ingredients: true } },
+        _count: { select: { ingredients: true, savedByUsers: true } },
       },
       orderBy:
         sort === "availability"
           ? { availabilityScore: "desc" }
           : sort === "newest"
           ? { createdAt: "desc" }
+          : sort === "popular"
+          ? { savedByUsers: { _count: "desc" } }
           : { viewCount: "desc" },
       skip: (page - 1) * limit,
       take: limit,

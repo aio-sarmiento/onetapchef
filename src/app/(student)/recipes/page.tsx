@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import Image from "next/image";
 import { PlusCircle, ChefHat, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -83,26 +84,45 @@ export default function MyRecipesPage() {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {recipes.map((recipe) => (
-            <Card key={recipe.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-4 flex flex-col gap-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <Link href={`/recipes/${recipe.slug}`} className="font-semibold hover:underline line-clamp-1 text-base">
-                      {recipe.title}
-                    </Link>
-                    <p className="text-sm text-muted-foreground line-clamp-2 mt-0.5">{recipe.description}</p>
+            <Card key={recipe.id} className="overflow-hidden hover:shadow-md transition-all group">
+              {/* Image */}
+              <div className="relative aspect-[4/3] bg-muted">
+                {recipe.imageUrl ? (
+                  <Image
+                    src={recipe.imageUrl}
+                    alt={recipe.title}
+                    fill
+                    className="object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                ) : (
+                  <div className="h-full flex items-center justify-center bg-brand-muted">
+                    <ChefHat className="h-10 w-10 text-brand/30" />
                   </div>
-                  <Button asChild variant="ghost" size="icon" className="shrink-0">
-                    <Link href={`/recipes/${recipe.slug}/edit`}>
-                      <Pencil className="h-4 w-4" />
-                    </Link>
-                  </Button>
-                </div>
+                )}
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 right-2 bg-white/85 hover:bg-white backdrop-blur-sm shadow-sm"
+                >
+                  <Link href={`/recipes/${recipe.slug}/edit`}>
+                    <Pencil className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge variant="outline">{recipe.category}</Badge>
+              <CardContent className="p-4 flex flex-col gap-2">
+                <Link
+                  href={`/recipes/${recipe.slug}`}
+                  className="font-bold text-base hover:underline line-clamp-1"
+                >
+                  {recipe.title}
+                </Link>
+                <p className="text-sm text-muted-foreground line-clamp-2">{recipe.description}</p>
+                <div className="flex items-center gap-2 flex-wrap mt-1">
+                  <Badge variant="outline" className="text-xs">{recipe.category}</Badge>
                   <span className="flex items-center gap-1 text-xs text-muted-foreground">
                     <AvailabilityDot score={recipe.availabilityScore} />
                     {Math.round(Number(recipe.availabilityScore) * 100)}% available
