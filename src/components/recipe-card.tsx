@@ -17,6 +17,7 @@ interface RecipeCardProps {
   category: string;
   availabilityScore: number;
   author: { displayName: string };
+  source?: string;
   isSaved?: boolean;
   isSelected?: boolean;
   onSaveToggle?: (id: string) => void;
@@ -43,12 +44,14 @@ export function RecipeCard({
   category,
   availabilityScore,
   author,
+  source,
   isSaved = false,
   isSelected = false,
   onSaveToggle,
   onSelect,
   selectMode = false,
 }: RecipeCardProps) {
+  const isDefault = source === "themealdb";
   const totalTime = prepTimeMinutes + cookTimeMinutes;
   const score = Number(availabilityScore);
 
@@ -129,7 +132,13 @@ export function RecipeCard({
               <Users className="h-3.5 w-3.5" />
               {baseServings}
             </span>
-            <span className="ml-auto">by {author.displayName}</span>
+            <span className="ml-auto">
+              {isDefault ? (
+                <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-xs">Default Recipe</span>
+              ) : (
+                `by ${author.displayName}`
+              )}
+            </span>
           </div>
         </CardContent>
       </Card>

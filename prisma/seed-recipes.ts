@@ -301,6 +301,7 @@ async function main() {
             imageUrl: (detail.strMealThumb as string) ?? null,
             instructions,
             isPublished: true,
+            source: "themealdb",
             ingredients: {
               create: links.map((l, idx) => ({ ...l, sortOrder: idx })),
             },

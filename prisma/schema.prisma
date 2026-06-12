@@ -147,6 +147,7 @@ model Recipe {
   createdAt        DateTime @default(now()) @map("created_at")
   viewCount        Int      @default(0) @map("view_count")
   shareCount       Int      @default(0) @map("share_count")
+  source           String   @default("user") @map("source")
 
   author       User               @relation(fields: [authorId], references: [id])
   ingredients  RecipeIngredient[]

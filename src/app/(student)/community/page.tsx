@@ -22,7 +22,7 @@ type PopularRecipe = {
 };
 
 async function fetchPopularRecipes(): Promise<PopularRecipe[]> {
-  const res = await fetch("/api/recipes?sort=popular&limit=30");
+  const res = await fetch("/api/recipes?sort=popular&limit=30&source=user");
   if (!res.ok) throw new Error("Failed to load");
   const json = await res.json();
   return json.data ?? json;

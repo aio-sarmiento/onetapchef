@@ -42,6 +42,7 @@ type Recipe = {
   category: string;
   availabilityScore: number;
   author: { displayName: string };
+  source: string;
 };
 
 type RecipePage = { data: Recipe[]; total: number };

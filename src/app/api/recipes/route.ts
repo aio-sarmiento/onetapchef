@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
   const page = parseInt(searchParams.get("page") ?? "1");
   const limit = Math.min(parseInt(searchParams.get("limit") ?? "24"), 48);
   const authorId = searchParams.get("authorId");
+  const source = searchParams.get("source"); // "user" | "themealdb" | null (all)
 
   // Resolve "me" author shorthand
   let resolvedAuthorId = authorId;
@@ -31,6 +32,7 @@ export async function GET(req: NextRequest) {
   const where: Prisma.RecipeWhereInput = {
     ...(resolvedAuthorId ? { authorId: resolvedAuthorId } : { isPublished: true }),
     availabilityScore: { gte: minScore },
+    ...(source && { source }),
     ...(category && { category }),
     ...(cuisine && { cuisine }),
     ...(dietary && { dietaryTags: { has: dietary } }),
