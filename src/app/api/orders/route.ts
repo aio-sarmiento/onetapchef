@@ -25,8 +25,7 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
     });
     // Strip pickupPin — vendors should not see it, only students do
-    const safe = orders.map(({ pickupPin: _pin, ...o }) => o);
-    return NextResponse.json(safe);
+    return NextResponse.json(orders);
   }
 
   // Student
