@@ -197,8 +197,15 @@ function OrderCard({ order, defaultExpanded = false }: { order: Order; defaultEx
           )}
 
           {/* Pickup PIN */}
-          {isReady && order.pickupPin && (
-            <PinDisplay pin={order.pickupPin} />
+          {isReady && (
+            order.pickupPin
+              ? <PinDisplay pin={order.pickupPin} />
+              : (
+                <div className="rounded-xl border-2 border-dashed border-muted-foreground/30 bg-muted/40 p-4 text-center text-sm text-muted-foreground">
+                  <Key className="h-5 w-5 mx-auto mb-1 opacity-40" />
+                  No PIN for this order — vendor can confirm pickup directly.
+                </div>
+              )
           )}
 
           {/* Delivery tracking */}

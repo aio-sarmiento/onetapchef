@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 
-const schema = z.object({ pin: z.string().length(4) });
+const schema = z.object({ pin: z.string().optional() });
 
 export async function POST(
   req: NextRequest,
@@ -29,9 +29,10 @@ export async function POST(
 
   const body = await req.json();
   const parse = schema.safeParse(body);
-  if (!parse.success) return NextResponse.json({ error: "Invalid PIN" }, { status: 400 });
+  if (!parse.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
-  if (parse.data.pin !== order.pickupPin) {
+  // Legacy orders (created before PIN feature) have no PIN — allow direct confirmation
+  if (order.pickupPin && parse.data.pin !== order.pickupPin) {
     return NextResponse.json({ error: "Incorrect PIN" }, { status: 400 });
   }
 
