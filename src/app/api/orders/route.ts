@@ -18,14 +18,15 @@ export async function GET() {
 
     const orders = await prisma.order.findMany({
       where: { vendorId: vendorProfile.id },
-      omit: { pickupPin: true },
       include: {
         student: { select: { displayName: true, email: true } },
         items: { include: { ingredient: { select: { name: true } } } },
       },
       orderBy: { createdAt: "desc" },
     });
-    return NextResponse.json(orders);
+    // Strip pickupPin — vendors should not see it, only students do
+    const safe = orders.map(({ pickupPin: _pin, ...o }) => o);
+    return NextResponse.json(safe);
   }
 
   // Student
