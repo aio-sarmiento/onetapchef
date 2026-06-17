@@ -18,6 +18,7 @@ export async function GET() {
 
     const orders = await prisma.order.findMany({
       where: { vendorId: vendorProfile.id },
+      omit: { pickupPin: true },
       include: {
         student: { select: { displayName: true, email: true } },
         items: { include: { ingredient: { select: { name: true } } } },
@@ -31,7 +32,7 @@ export async function GET() {
   const orders = await prisma.order.findMany({
     where: { studentId: user.id },
     include: {
-      vendor: { select: { businessName: true, city: true, contactPhone: true } },
+      vendor: { select: { businessName: true, city: true, address: true, contactPhone: true } },
       items: { include: { ingredient: { select: { name: true } } } },
     },
     orderBy: { createdAt: "desc" },

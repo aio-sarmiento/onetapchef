@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 
 const statusSchema = z.object({
-  status: z.enum(["ready_for_pickup", "out_for_delivery", "collected", "delivered", "cancelled"]),
+  status: z.enum(["ready_for_pickup", "out_for_delivery", "delivered", "cancelled"]),
   note: z.string().max(500).optional(),
 });
 
@@ -39,7 +39,7 @@ export async function PUT(
 
   // Enforce transition rules
   const vendorStatuses = new Set(["ready_for_pickup", "out_for_delivery", "cancelled"]);
-  const studentStatuses = new Set(["collected", "delivered"]);
+  const studentStatuses = new Set(["delivered"]);
 
   if (vendorStatuses.has(status) && !isVendor) {
     return NextResponse.json({ error: "Only vendor can set this status" }, { status: 403 });
@@ -48,10 +48,16 @@ export async function PUT(
     return NextResponse.json({ error: "Only student can set this status" }, { status: 403 });
   }
 
+  // Generate a 4-digit pickup PIN when order becomes ready for collection
+  const pickupPin = status === "ready_for_pickup"
+    ? String(Math.floor(1000 + Math.random() * 9000))
+    : undefined;
+
   const updated = await prisma.order.update({
     where: { id: params.id },
     data: {
       status,
+      ...(pickupPin ? { pickupPin } : {}),
       ...(isVendor && note ? { vendorNote: note } : {}),
       ...(isStudent && note ? { studentNote: note } : {}),
     },

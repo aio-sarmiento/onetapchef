@@ -215,6 +215,7 @@ model Order {
   studentNote      String?      @map("student_note")
   vendorNote       String?      @map("vendor_note")
   estimatedTotal   Decimal      @map("estimated_total") @db.Decimal(10, 2)
+  pickupPin        String?      @map("pickup_pin")
   createdAt        DateTime     @default(now()) @map("created_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")
 
